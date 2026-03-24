@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import { initRag, ragSearch } from './rag.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -138,6 +140,21 @@ app.post('/api/chat-stream', async (request, response) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Lab safety proxy running at http://localhost:${port}`);
+app.post('/api/rag-search', (request, response) => {
+  const { keywords, topK } = request.body ?? {};
+
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+    response.status(400).json({ error: '缺少 keywords 参数（字符串数组）。' });
+    return;
+  }
+
+  const result = ragSearch(keywords, topK || 5);
+  response.json(result);
+});
+
+initRag().then((info) => {
+  console.log(`[RAG] Init complete: ${info.chunkCount} chunks indexed.`);
+  app.listen(port, () => {
+    console.log(`Lab safety proxy running at http://localhost:${port}`);
+  });
 });

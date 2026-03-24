@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent, ReactNode } from 'react';
 import './App.css';
 import i3cLogo from '../logo/i3c.png';
 import exampleImage1 from '../example/example1.jpg';
 
-const DEFAULT_API_KEY = 'sk-jnczgvcbznnxauyqdxfqperafqvukfgvrudpdahikvtxxaaz';
-const DEFAULT_BASE_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const DEFAULT_GITHUB_URL = 'https://github.com/your-org/lab-safety-app';
+const DEFAULT_API_KEY = import.meta.env.VITE_SILICONFLOW_API_KEY || '';
+const DEFAULT_BASE_URL = import.meta.env.VITE_SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1/chat/completions';
+const DEFAULT_GITHUB_URL = import.meta.env.VITE_GITHUB_URL || 'https://github.com/your-org/lab-safety-app';
 const HAZARD_MODEL = 'Qwen/Qwen3-VL-32B-Instruct';
 const OMNI_MODEL = 'Qwen/Qwen3-Omni-30B-A3B-Instruct';
 
@@ -24,6 +24,7 @@ const DEFAULT_HAZARD_PROMPT = `你是一名“高校实验室安全巡检专家�
 
 输出要求：
 - 只输出 JSON，不要输出 Markdown，不要加解释前后缀。
+- 对于每个隐患，必须提供 bbox 字段标注其在图像中的位置，格式为 [x1, y1, x2, y2]，取值范围 0~1（归一化坐标，左上角为原点）。x1,y1 是左上角，x2,y2 是右下角。
 - JSON 结构必须为：
 {
   "has_hazard": true,
@@ -31,8 +32,10 @@ const DEFAULT_HAZARD_PROMPT = `你是一名“高校实验室安全巡检专家�
   "overall_risk_level": "低/中/高",
   "hazards": [
     {
+      "id": 1,
       "type": "隐患类型",
       "risk_level": "低/中/高",
+      "bbox": [0.1, 0.2, 0.5, 0.6],
       "evidence": "图像中看到的证据",
       "impact": "可能造成的后果",
       "suggestion": "整改建议"
@@ -45,6 +48,8 @@ const DEFAULT_HAZARD_PROMPT = `你是一名“高校实验室安全巡检专家�
 判定规则：
 - 没有明显隐患时，has_hazard 为 false，hazards 返回空数组。
 - 若存在多个隐患，请按风险从高到低排序。
+- 不同隐患的 bbox 不得重复或高度重叠，若两个隐患位于同一区域请合并为一条。
+- bbox 所有坐标值必须统一使用 0~1 归一化范围，不要混用不同尺度。
 - 若画面模糊或局部遮挡，请在 uncertain_points 中说明。`;
 
 const DEFAULT_OMNI_SYSTEM_PROMPT = `你是一名“实验室安全多模态助手”。
@@ -81,8 +86,10 @@ type HazardResult = {
   summary?: string;
   overall_risk_level?: string;
   hazards?: Array<{
+    id?: number;
     type?: string;
     risk_level?: string;
+    bbox?: [number, number, number, number];
     evidence?: string;
     impact?: string;
     suggestion?: string;
@@ -106,9 +113,11 @@ function App() {
   const [hazardPrompt, setHazardPrompt] = useState(DEFAULT_HAZARD_PROMPT);
   const [hazardImage, setHazardImage] = useState<MediaAsset | null>(null);
   const [hazardLoading, setHazardLoading] = useState(false);
+  const [hazardStep, setHazardStep] = useState('');
   const [hazardError, setHazardError] = useState('');
   const [hazardRaw, setHazardRaw] = useState('');
   const [hazardResult, setHazardResult] = useState<HazardResult | null>(null);
+  const [ragExcerpts, setRagExcerpts] = useState<Array<{ idx: number; text: string }>>([]);
 
   const [omniSystemPrompt, setOmniSystemPrompt] = useState(DEFAULT_OMNI_SYSTEM_PROMPT);
   const [omniUserPrompt, setOmniUserPrompt] = useState('请结合我上传的内容，分析是否存在实验室安全隐患，并给出整改建议。');
@@ -202,12 +211,15 @@ function App() {
     }
 
     setHazardLoading(true);
+    setHazardStep('步骤 1/3：AI 识别隐患...');
     setHazardError('');
     setHazardRaw('');
     setHazardResult(null);
+    setRagExcerpts([]);
 
     try {
-      const responseText = await callProxyWithFallback({
+      // Step 1: VLM identifies hazards with bbox
+      const step1Text = await callProxyWithFallback({
         settings,
         model: HAZARD_MODEL,
         messages: [
@@ -222,11 +234,137 @@ function App() {
         ],
         onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
       });
-      setHazardResult(parseJsonFromText(responseText) as HazardResult);
+
+      const step1Raw = parseJsonFromText(step1Text) as HazardResult;
+
+      // Deduplicate hazards with near-identical bboxes (distance < 0.05)
+      if (step1Raw.hazards?.length) {
+        const normVal = (v: number) => (v > 1 ? v / 1000 : v);
+        const seen: number[][] = [];
+        step1Raw.hazards = step1Raw.hazards.filter((h) => {
+          if (!h.bbox || h.bbox.length !== 4) return true;
+          const nb = h.bbox.map(normVal);
+          const dup = seen.some((s) => s.every((v, i) => Math.abs(v - nb[i]) < 0.05));
+          if (!dup) seen.push(nb);
+          return !dup;
+        });
+        // Re-assign sequential IDs
+        step1Raw.hazards.forEach((h, i) => { h.id = i + 1; });
+      }
+      const step1Result = step1Raw;
+
+      // Step 2: Extract keywords and search regulations via RAG
+      setHazardStep('步骤 2/3：检索安全条例...');
+      const keywords = extractHazardKeywords(step1Result);
+      let excerpts: string[] = [];
+
+      if (keywords.length > 0) {
+        try {
+          const ragResponse = await fetch('/api/rag-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords, topK: 5 }),
+          });
+          if (ragResponse.ok) {
+            const ragData = await ragResponse.json();
+            excerpts = (ragData.results || []).map((r: { text: string }) => r.text);
+            setRagExcerpts(excerpts.map((text: string, i: number) => ({ idx: i + 1, text })));
+          }
+        } catch {
+          // RAG search failure is non-fatal; continue without regulation context
+        }
+      }
+
+      // Step 3: If we have regulation excerpts, do a second VLM call with context
+      if (excerpts.length > 0) {
+        setHazardStep('步骤 3/3：基于条例生成最终分析...');
+        setHazardRaw('');
+
+        const ragContext = excerpts.map((e, i) => `【条例片段 ${i + 1}】${e}`).join('\n\n');
+        const step3Prompt = `你是一名"高校实验室安全巡检专家"。以下是第一步 AI 识别的隐患信息和检索到的实验室安全条例。
+
+请基于安全条例对隐患进行最终分析，在每个隐患的 suggestion 中引用相关条例（标注"依据条例片段 X"）。
+保持原有 JSON 结构（包含 id、bbox 等字段），可以修正或补充第一步的判断。
+
+【第一步识别结果】
+${step1Text}
+
+【实验室安全条例参考】
+${ragContext}
+
+输出要求：只输出合法 JSON，结构与第一步相同。`;
+
+        const finalText = await callProxyWithFallback({
+          settings,
+          model: HAZARD_MODEL,
+          messages: [
+            { role: 'system', content: '你必须只输出合法 JSON。' },
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: hazardImage.dataUrl, detail: 'high' } },
+                { type: 'text', text: step3Prompt },
+              ],
+            },
+          ],
+          onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
+        });
+
+        const finalRaw = parseJsonFromText(finalText) as HazardResult;
+
+        // Deduplicate hazards with near-identical bboxes in final result too
+        if (finalRaw.hazards?.length) {
+          const normVal = (v: number) => (v > 1 ? v / 1000 : v);
+          const seen: number[][] = [];
+          finalRaw.hazards = finalRaw.hazards.filter((h) => {
+            if (!h.bbox || h.bbox.length !== 4) return true;
+            const nb = h.bbox.map(normVal);
+            const dup = seen.some((s) => s.every((v, i) => Math.abs(v - nb[i]) < 0.05));
+            if (!dup) seen.push(nb);
+            return !dup;
+          });
+          finalRaw.hazards.forEach((h, i) => { h.id = i + 1; });
+        }
+        const finalResult = finalRaw;
+        setHazardResult(finalResult);
+
+        // Filter excerpts to only those referenced, renumber sequentially
+        const referencedIds = new Set<number>();
+        for (const h of finalResult.hazards || []) {
+          const matches = (h.suggestion || '').matchAll(/条例片段\s*(\d+)/g);
+          for (const m of matches) referencedIds.add(Number(m[1]));
+        }
+        if (referencedIds.size > 0) {
+          // Build old→new index mapping (e.g. {4→1, 5→2})
+          const sortedIds = [...referencedIds].sort((a, b) => a - b);
+          const idMap = new Map<number, number>();
+          sortedIds.forEach((oldIdx, i) => idMap.set(oldIdx, i + 1));
+
+          // Remap references in suggestion text
+          for (const h of finalResult.hazards || []) {
+            if (h.suggestion) {
+              h.suggestion = h.suggestion.replace(/条例片段\s*(\d+)/g, (_, num) => {
+                const newIdx = idMap.get(Number(num));
+                return newIdx ? `条例片段 ${newIdx}` : `条例片段 ${num}`;
+              });
+            }
+          }
+          setHazardResult({ ...finalResult });
+
+          // Store with sequential numbering
+          setRagExcerpts(sortedIds
+            .filter((oldIdx) => oldIdx >= 1 && oldIdx <= excerpts.length)
+            .map((oldIdx, i) => ({ idx: i + 1, text: excerpts[oldIdx - 1] })));
+        }
+      } else {
+        // No RAG excerpts available, use step 1 result directly
+        setHazardResult(step1Result);
+      }
     } catch (error) {
       setHazardError(getErrorMessage(error));
     } finally {
       setHazardLoading(false);
+      setHazardStep('');
     }
   }
 
@@ -423,7 +561,7 @@ function App() {
                     Prompt 配置
                   </button>
                   <button className="primary-action" type="submit" onClick={(event) => void handleHazardSubmit(event as unknown as FormEvent<HTMLFormElement>)} disabled={hazardLoading || !hazardImage}>
-                    {hazardLoading ? '分析中...' : '开始检测'}
+                    {hazardLoading ? (hazardStep || '分析中...') : '开始检测'}
                   </button>
                 </div>
 
@@ -447,6 +585,12 @@ function App() {
                         <strong>{hazardResult.has_hazard ? '检测到安全隐患' : '未检测到明显隐患'}</strong>
                         <span>{hazardResult.overall_risk_level || '待返回'}</span>
                       </div>
+                      {hazardImage && hazardResult?.hazards?.length ? (
+                        <div className="result-block">
+                          <h4>隐患标注图</h4>
+                          <BboxOverlay imageSrc={hazardImage.previewUrl} hazards={hazardResult.hazards} />
+                        </div>
+                      ) : null}
                       <ResultBlock title="总结" content={hazardResult.summary || '暂无总结。'} />
                       <div className="result-block">
                         <h4>隐患条目</h4>
@@ -455,12 +599,15 @@ function App() {
                             {hazardResult.hazards.map((item, index) => (
                               <article className="hazard-item" key={`${item.type || 'hazard'}-${index}`}>
                                 <div className="hazard-head">
+                                  <span className="hazard-area-badge" style={{ backgroundColor: BBOX_COLORS[index % BBOX_COLORS.length] }}>
+                                    区域 {item.id ?? index + 1}
+                                  </span>
                                   <strong>{item.type || `隐患 ${index + 1}`}</strong>
                                   <span>{item.risk_level || '未评级'}</span>
                                 </div>
                                 <p><strong>证据:</strong> {item.evidence || '暂无'}</p>
                                 <p><strong>影响:</strong> {item.impact || '暂无'}</p>
-                                <p><strong>建议:</strong> {item.suggestion || '暂无'}</p>
+                                <p><strong>建议:</strong> <SuggestionWithLinks text={item.suggestion || '暂无'} /></p>
                               </article>
                             ))}
                           </div>
@@ -468,6 +615,19 @@ function App() {
                           <div className="empty-state small">当前没有返回具体隐患条目。</div>
                         )}
                       </div>
+                      {ragExcerpts.length > 0 ? (
+                        <div className="result-block">
+                          <h4>参考安全条例</h4>
+                          <div className="rag-excerpt-list">
+                            {ragExcerpts.map((excerpt) => (
+                              <div className="rag-excerpt" key={`rag-${excerpt.idx}`} id={`rag-excerpt-${excerpt.idx}`}>
+                                <span className="rag-excerpt-badge">条例片段 {excerpt.idx}</span>
+                                <p>{excerpt.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <ResultList title="待复核点" items={hazardResult.uncertain_points} />
                       <ResultList title="优先整改建议" items={hazardResult.recommended_actions} />
                     </div>
@@ -645,6 +805,127 @@ function App() {
   );
 }
 
+const BBOX_COLORS = [
+  '#FF4136', '#FF851B', '#FFDC00', '#2ECC40', '#0074D9',
+  '#B10DC9', '#F012BE', '#01FF70', '#7FDBFF', '#FF6384',
+];
+
+function BboxOverlay({
+  imageSrc,
+  hazards,
+}: {
+  imageSrc: string;
+  hazards?: HazardResult['hazards'];
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgObjRef = useRef<HTMLImageElement | null>(null);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const cw = container.clientWidth;
+    if (cw === 0) return; // not laid out yet
+    const ch = 390;
+
+    // Set canvas buffer size AND matching CSS size to avoid scaling mismatch
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const img = imgObjRef.current;
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+
+    // Fit image inside canvas with padding
+    const pad = 16;
+    const areaW = cw - pad * 2;
+    const areaH = ch - pad * 2;
+    const scale = Math.min(areaW / img.naturalWidth, areaH / img.naturalHeight);
+    const renderedW = img.naturalWidth * scale;
+    const renderedH = img.naturalHeight * scale;
+    const offsetX = pad + (areaW - renderedW) / 2;
+    const offsetY = pad + (areaH - renderedH) / 2;
+
+    ctx.drawImage(img, offsetX, offsetY, renderedW, renderedH);
+
+    if (!hazards?.length) return;
+
+    // Per-value normalization: model mixes 0-1 and 0-1000 within a single bbox
+    function normalizeBbox(raw: number[]): [number, number, number, number] {
+      const norm = (v: number) => (v > 1 ? v / 1000 : v);
+      let [bx1, by1, bx2, by2] = raw.map(norm);
+      // Ensure proper order
+      if (bx1 > bx2) { const t = bx1; bx1 = bx2; bx2 = t; }
+      if (by1 > by2) { const t = by1; by1 = by2; by2 = t; }
+      // Clamp to [0, 1]
+      const clamp = (v: number) => Math.max(0, Math.min(1, v));
+      return [clamp(bx1), clamp(by1), clamp(bx2), clamp(by2)];
+    }
+
+    hazards.forEach((item, index) => {
+      if (!item.bbox || item.bbox.length !== 4) return;
+      const [x1, y1, x2, y2] = normalizeBbox(item.bbox);
+      const px1 = offsetX + x1 * renderedW;
+      const py1 = offsetY + y1 * renderedH;
+      const px2 = offsetX + x2 * renderedW;
+      const py2 = offsetY + y2 * renderedH;
+      const w = px2 - px1;
+      const h = py2 - py1;
+
+      const color = BBOX_COLORS[index % BBOX_COLORS.length];
+      const label = `区域 ${item.id ?? index + 1}`;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(px1, py1, w, h);
+
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.18;
+      ctx.fillRect(px1, py1, w, h);
+      ctx.globalAlpha = 1;
+
+      ctx.font = 'bold 16px sans-serif';
+      const tm = ctx.measureText(label);
+      const textH = 24;
+      const textW = tm.width + 10;
+      ctx.fillStyle = color;
+      ctx.fillRect(px1, py1 - textH, textW, textH);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, px1 + 5, py1 - 6);
+    });
+  }, [hazards]);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      imgObjRef.current = img;
+      // Use rAF to ensure container is laid out before drawing
+      requestAnimationFrame(() => draw());
+    };
+    img.src = imageSrc;
+  }, [imageSrc, draw]);
+
+  useEffect(() => {
+    // Redraw on mount (after layout) and on resize
+    requestAnimationFrame(() => draw());
+    window.addEventListener('resize', draw);
+    return () => window.removeEventListener('resize', draw);
+  }, [draw]);
+
+  return (
+    <div ref={containerRef} className="bbox-overlay-container">
+      <canvas ref={canvasRef} />
+    </div>
+  );
+}
+
 function MediaSection({ title, actionLabel, children, preview, footer }: { title: string; actionLabel: string; children: ReactNode; preview: ReactNode; footer: ReactNode; }) {
   return (
     <section className="media-card">
@@ -653,6 +934,34 @@ function MediaSection({ title, actionLabel, children, preview, footer }: { title
       <div className="media-preview-wrap">{preview || <div className="empty-state small">尚未添加{title}</div>}</div>
       {footer}
     </section>
+  );
+}
+
+function SuggestionWithLinks({ text }: { text: string }) {
+  const parts = text.split(/(条例片段\s*\d+)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/条例片段\s*(\d+)/);
+        if (match) {
+          const num = match[1];
+          return (
+            <a
+              key={i}
+              href={`#rag-excerpt-${num}`}
+              className="rag-link"
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById(`rag-excerpt-${num}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+            >
+              条例片段 {num}
+            </a>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
   );
 }
 
@@ -700,6 +1009,23 @@ function readFileAsDataUrl(file: Blob): Promise<string> {
     reader.onerror = () => reject(new Error('文件读取失败。'));
     reader.readAsDataURL(file);
   });
+}
+
+function extractHazardKeywords(result: HazardResult): string[] {
+  const keywords: string[] = [];
+  if (result.hazards?.length) {
+    for (const h of result.hazards) {
+      if (h.type) keywords.push(h.type);
+      if (h.evidence) {
+        const short = h.evidence.slice(0, 40);
+        keywords.push(short);
+      }
+    }
+  }
+  if (result.summary) {
+    keywords.push(result.summary.slice(0, 60));
+  }
+  return [...new Set(keywords)];
 }
 
 function parseJsonFromText(text: string) {
