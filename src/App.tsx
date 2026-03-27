@@ -7,8 +7,8 @@ import exampleImage1 from '../example/example1.jpg';
 const DEFAULT_API_KEY = import.meta.env.VITE_SILICONFLOW_API_KEY || '';
 const DEFAULT_BASE_URL = import.meta.env.VITE_SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1/chat/completions';
 const DEFAULT_GITHUB_URL = import.meta.env.VITE_GITHUB_URL || 'https://github.com/your-org/lab-safety-app';
-const HAZARD_MODEL = 'Qwen/Qwen3-VL-32B-Instruct';
-const OMNI_MODEL = 'Qwen/Qwen3-Omni-30B-A3B-Instruct';
+const HAZARD_MODEL = import.meta.env.VITE_HAZARD_MODEL || 'Qwen/Qwen3-VL-32B-Instruct';
+const OMNI_MODEL = import.meta.env.VITE_OMNI_MODEL || 'Qwen/Qwen3-Omni-30B-A3B-Instruct';
 
 const DEFAULT_HAZARD_PROMPT = `你是一名“高校实验室安全巡检专家”，擅长识别化学、材料、生物、电子、电气、机械等实验场景中的安全隐患。
 
