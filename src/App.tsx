@@ -894,6 +894,7 @@ ${ragContext}
                     onChange={(event) => {
                       if (event.target.value) {
                         setSettings((prev) => ({ ...prev, hazardModel: event.target.value }));
+                        showToast('模型配置已更新', 'success');
                       }
                     }}
                   >
@@ -907,6 +908,7 @@ ${ragContext}
                   type="text"
                   value={settings.hazardModel}
                   onChange={(event) => setSettings((prev) => ({ ...prev, hazardModel: event.target.value }))}
+                  onBlur={() => showToast('模型配置已更新', 'success')}
                   placeholder={HAZARD_MODEL}
                 />
                 <button
@@ -935,6 +937,7 @@ ${ragContext}
                     onChange={(event) => {
                       if (event.target.value) {
                         setSettings((prev) => ({ ...prev, omniModel: event.target.value }));
+                        showToast('模型配置已更新', 'success');
                       }
                     }}
                   >
@@ -948,6 +951,7 @@ ${ragContext}
                   type="text"
                   value={settings.omniModel}
                   onChange={(event) => setSettings((prev) => ({ ...prev, omniModel: event.target.value }))}
+                  onBlur={() => showToast('模型配置已更新', 'success')}
                   placeholder={OMNI_MODEL}
                 />
                 <button
