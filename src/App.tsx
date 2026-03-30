@@ -329,7 +329,7 @@ function App() {
       // Step 1: VLM identifies hazards with bbox
       const step1Text = await callProxyWithFallback({
         settings,
-        model: HAZARD_MODEL,
+        model: settings.hazardModel,
         messages: [
           { role: 'system', content: '你必须只输出合法 JSON。' },
           {
@@ -404,7 +404,7 @@ ${ragContext}
 
         const finalText = await callProxyWithFallback({
           settings,
-          model: HAZARD_MODEL,
+          model: settings.hazardModel,
           messages: [
             { role: 'system', content: '你必须只输出合法 JSON。' },
             {
@@ -496,7 +496,7 @@ ${ragContext}
     try {
       await callProxyWithFallback({
         settings,
-        model: OMNI_MODEL,
+        model: settings.omniModel,
         messages: [
           { role: 'system', content: omniSystemPrompt.trim() || DEFAULT_OMNI_SYSTEM_PROMPT },
           { role: 'user', content: contentParts },
@@ -606,7 +606,7 @@ ${ragContext}
         <div className="topbar-right">
           <div className="engine-badge">
             <span className="engine-dot"></span>
-            <span>{activeTab === 'omni' ? OMNI_MODEL : HAZARD_MODEL}</span>
+            <span>{activeTab === 'omni' ? settings.omniModel : settings.hazardModel}</span>
           </div>
           <button className="icon-button" type="button" title="API 配置" onClick={() => setShowSettings(true)}>
             <ConfigIcon />
@@ -627,7 +627,7 @@ ${ragContext}
                     <p className="page-kicker">AI Vision</p>
                     <h2>图片安全隐患检测</h2>
                   </div>
-                  <span className="model-chip">{HAZARD_MODEL}</span>
+                  <span className="model-chip">{settings.hazardModel}</span>
                 </div>
 
                 <div
@@ -784,7 +784,7 @@ ${ragContext}
                     <p className="panel-kicker">输入区域</p>
                     <h3>多模态配置</h3>
                   </div>
-                  <span className="model-chip">{OMNI_MODEL}</span>
+                  <span className="model-chip">{settings.omniModel}</span>
                 </div>
 
                 <label className="field">
@@ -1397,7 +1397,7 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                try {
                   const step1Text = await callProxyWithFallback({
                     settings,
-                    model: HAZARD_MODEL,
+                    model: settings.hazardModel,
                     messages: [
                       { role: 'system', content: '你必须只输出合法 JSON。' },
                       {
@@ -1443,7 +1443,7 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
               <p className="page-kicker">Realtime</p>
               <h2>实时安全检测</h2>
             </div>
-            <span className="model-chip">{HAZARD_MODEL}</span>
+            <span className="model-chip">{settings.hazardModel}</span>
           </div>
 
           <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000', aspectRatio: '4/3' }}>
