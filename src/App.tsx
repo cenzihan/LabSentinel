@@ -84,6 +84,20 @@ type ApiSettings = {
   omniModel: string;
 };
 
+type ModelPreset = {
+  name: string;
+  label: string;
+};
+
+type ModelPresetsResponse = {
+  visionModels: ModelPreset[];
+  omniModels: ModelPreset[];
+  defaults: {
+    vision: string;
+    omni: string;
+  };
+};
+
 type MediaAsset = {
   dataUrl: string;
   previewUrl: string;
@@ -115,6 +129,7 @@ function App() {
   const [showHazardPromptSettings, setShowHazardPromptSettings] = useState(false);
   const [hazardDragging, setHazardDragging] = useState(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' });
+  const [modelPresets, setModelPresets] = useState<ModelPresetsResponse | null>(null);
   const [settings, setSettings] = useState<ApiSettings>({
     apiKey: DEFAULT_API_KEY,
     baseUrl: DEFAULT_BASE_URL,
@@ -125,6 +140,22 @@ function App() {
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ visible: true, message, type });
+  }, []);
+
+  // Fetch model presets from /api/models
+  useEffect(() => {
+    const fetchModelPresets = async () => {
+      try {
+        const response = await fetch('/api/models');
+        if (response.ok) {
+          const data = await response.json() as ModelPresetsResponse;
+          setModelPresets(data);
+        }
+      } catch {
+        // Silently fail - UI will still work with manual input
+      }
+    };
+    fetchModelPresets();
   }, []);
 
   useEffect(() => {
@@ -810,6 +841,66 @@ ${ragContext}
             <label className="field">
               <span>GitHub 链接</span>
               <input type="text" value={settings.githubUrl} onChange={(event) => setSettings((prev) => ({ ...prev, githubUrl: event.target.value }))} placeholder={DEFAULT_GITHUB_URL} />
+            </label>
+
+            <div className="settings-section-divider">
+              <h4>模型配置</h4>
+            </div>
+
+            <label className="field">
+              <span>图片/实时检测模型</span>
+              <div className="model-input-group">
+                {modelPresets?.visionModels?.length ? (
+                  <select
+                    className="model-select"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSettings((prev) => ({ ...prev, hazardModel: event.target.value }));
+                      }
+                    }}
+                  >
+                    <option value="">选择预设模型...</option>
+                    {modelPresets.visionModels.map((model) => (
+                      <option key={model.name} value={model.name}>{model.label}</option>
+                    ))}
+                  </select>
+                ) : null}
+                <input
+                  type="text"
+                  value={settings.hazardModel}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, hazardModel: event.target.value }))}
+                  placeholder={HAZARD_MODEL}
+                />
+              </div>
+            </label>
+
+            <label className="field">
+              <span>多模态咨询模型</span>
+              <div className="model-input-group">
+                {modelPresets?.omniModels?.length ? (
+                  <select
+                    className="model-select"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSettings((prev) => ({ ...prev, omniModel: event.target.value }));
+                      }
+                    }}
+                  >
+                    <option value="">选择预设模型...</option>
+                    {modelPresets.omniModels.map((model) => (
+                      <option key={model.name} value={model.name}>{model.label}</option>
+                    ))}
+                  </select>
+                ) : null}
+                <input
+                  type="text"
+                  value={settings.omniModel}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, omniModel: event.target.value }))}
+                  placeholder={OMNI_MODEL}
+                />
+              </div>
             </label>
           </section>
         </div>

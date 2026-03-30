@@ -125,3 +125,11 @@
 .toast-icon { display: flex; align-items: center; justify-content: center; }
 .toast-message { font-size: .95rem; }
 @keyframes toast-fade-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* Model Selection Styles */
+.settings-section-divider { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+.settings-section-divider h4 { margin: 0; color: #334155; font-weight: 800; font-size: 1rem; }
+.model-input-group { display: flex; flex-direction: column; gap: .5rem; }
+.model-select { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; font-weight: 700; font: inherit; cursor: pointer; outline: none; }
+.model-select:focus { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+.model-input-group input { width: 100%; }
