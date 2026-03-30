@@ -1,7 +1,15 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { initRag, ragSearch } from './rag.js';
+
+// Configure proxy if HTTPS_PROXY is set
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+if (proxyUrl) {
+  setGlobalDispatcher(new ProxyAgent(proxyUrl));
+  console.log(`[Proxy] Using proxy: ${proxyUrl}`);
+}
 
 const app = express();
 const port = process.env.SERVER_PORT || 3001;
@@ -156,6 +164,8 @@ app.post('/api/chat-stream', async (request, response) => {
         temperature: 0.2,
         stream: true,
       }),
+      // Increase timeout for large image payloads through proxy
+      signal: AbortSignal.timeout(120000), // 2 minutes
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -190,8 +200,12 @@ app.post('/api/chat-stream', async (request, response) => {
 
     response.end();
   } catch (error) {
+    console.error('[chat-stream] Error details:', error);
+    const errorMessage = error instanceof Error ? `${error.message} (${error.cause ? String(error.cause) : 'no cause'})` : '流式代理调用失败。';
+    console.error('[chat-stream] Final URL:', finalUrl);
+    console.error('[chat-stream] Request body size:', JSON.stringify({ model, messages, temperature: 0.2, stream: true }).length, 'bytes');
     response.status(500).json({
-      error: error instanceof Error ? error.message : '流式代理调用失败。',
+      error: errorMessage,
     });
   }
 });
