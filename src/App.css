@@ -136,3 +136,19 @@
 .reset-model-btn { margin-top: .25rem; padding: .6rem 1rem; border-radius: .75rem; border: 0; background: #f1f5f9; color: #64748b; font-weight: 700; font-size: .88rem; cursor: pointer; transition: .2s ease; }
 .reset-model-btn:hover:not(:disabled) { background: #e2e8f0; color: #334155; }
 .reset-model-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Preset model management UI */
+.preset-management { margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 1rem; border: 1px solid #e2e8f0; }
+.preset-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.preset-item { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; background: #fff; border-radius: .5rem; border: 1px solid #cbd5e1; }
+.preset-label { font-weight: 700; color: #1e40af; flex-shrink: 0; min-width: 120px; }
+.preset-name { color: #64748b; font-size: .85rem; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; }
+.preset-delete-btn { width: 24px; height: 24px; border: 0; background: #fee2e2; color: #dc2626; border-radius: .25rem; cursor: pointer; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: .2s ease; }
+.preset-delete-btn:hover { background: #fecaca; }
+.preset-add-form { display: flex; gap: .5rem; margin-bottom: .75rem; }
+.preset-add-form input { flex: 1; padding: .6rem .75rem; border-radius: .5rem; border: 1px solid #cbd5e1; font-size: .9rem; }
+.preset-add-form input:focus { border-color: #2563eb; outline: none; }
+.preset-add-btn { padding: .6rem 1rem; border-radius: .5rem; border: 0; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; transition: .2s ease; }
+.preset-add-btn:hover { background: #1d4ed8; }
+.preset-reset-btn { padding: .5rem .75rem; border-radius: .5rem; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: .85rem; cursor: pointer; transition: .2s ease; }
+.preset-reset-btn:hover { background: #f1f5f9; color: #334155; }

@@ -43,16 +43,16 @@ app.get('/api/health', (_request, response) => {
   response.json({ ok: true, service: 'lab-safety-proxy' });
 });
 
-// Preset model lists for frontend selection
-const VISION_MODELS = [
-  { name: 'Qwen/Qwen2-VL-7B-Instruct', label: 'Qwen2-VL-7B' },
+// Default preset model lists (users can customize via localStorage)
+const DEFAULT_VISION_MODELS = [
   { name: 'Qwen/Qwen2.5-VL-32B-Instruct', label: 'Qwen2.5-VL-32B' },
+  { name: 'Qwen/Qwen3-VL-8B-Instruct', label: 'Qwen3-VL-8B' },
+  { name: 'Qwen/Qwen3-VL-8B-Thinking', label: 'Qwen3-VL-8B-Thinking' },
   { name: 'Qwen/Qwen3-VL-32B-Instruct', label: 'Qwen3-VL-32B (推荐)' },
-  { name: 'deepseek-ai/deepseek-vl2', label: 'DeepSeek-VL2' },
-  { name: 'THUDM/glm-4v-9b', label: 'GLM-4V-9B' },
+  { name: 'THUDM/GLM-4.1V-9B-Thinking', label: 'GLM-4.1V-9B-Thinking' },
 ];
 
-const OMNI_MODELS = [
+const DEFAULT_OMNI_MODELS = [
   { name: 'Qwen/Qwen2.5-Omni-7B', label: 'Qwen2.5-Omni-7B' },
   { name: 'Qwen/Qwen3-Omni-30B-A3B-Instruct', label: 'Qwen3-Omni-30B (推荐)' },
 ];
@@ -62,8 +62,8 @@ app.get('/api/models', (_request, response) => {
   const defaultOmni = process.env.VITE_OMNI_MODEL || 'Qwen/Qwen3-Omni-30B-A3B-Instruct';
 
   response.json({
-    visionModels: VISION_MODELS,
-    omniModels: OMNI_MODELS,
+    visionModels: DEFAULT_VISION_MODELS,
+    omniModels: DEFAULT_OMNI_MODELS,
     defaults: {
       vision: defaultVision,
       omni: defaultOmni,

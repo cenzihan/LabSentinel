@@ -130,6 +130,17 @@ function App() {
   const [hazardDragging, setHazardDragging] = useState(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' });
   const [modelPresets, setModelPresets] = useState<ModelPresetsResponse | null>(null);
+
+  // User custom presets (stored in localStorage, merged with server defaults)
+  const [customVisionModels, setCustomVisionModels] = useState<ModelPreset[]>([]);
+  const [customOmniModels, setCustomOmniModels] = useState<ModelPreset[]>([]);
+
+  // New preset input state
+  const [newVisionModelName, setNewVisionModelName] = useState('');
+  const [newVisionModelLabel, setNewVisionModelLabel] = useState('');
+  const [newOmniModelName, setNewOmniModelName] = useState('');
+  const [newOmniModelLabel, setNewOmniModelLabel] = useState('');
+
   const [settings, setSettings] = useState<ApiSettings>({
     apiKey: DEFAULT_API_KEY,
     baseUrl: DEFAULT_BASE_URL,
@@ -157,6 +168,190 @@ function App() {
     };
     fetchModelPresets();
   }, []);
+
+  // Load custom presets from localStorage
+  useEffect(() => {
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as {
+          visionModels?: ModelPreset[];
+          omniModels?: ModelPreset[];
+        };
+        if (parsed.visionModels) setCustomVisionModels(parsed.visionModels);
+        if (parsed.omniModels) setCustomOmniModels(parsed.omniModels);
+      } catch {
+        // Invalid data, ignore
+      }
+    }
+  }, []);
+
+  // Save custom presets to localStorage
+  useEffect(() => {
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      visionModels: customVisionModels,
+      omniModels: customOmniModels,
+    }));
+  }, [customVisionModels, customOmniModels]);
+
+  // Add custom vision model preset
+  const addVisionModelPreset = useCallback(() => {
+    if (!newVisionModelName.trim() || !newVisionModelLabel.trim()) {
+      showToast('请填写模型名称和显示名称', 'error');
+      return;
+    }
+    // Check if already exists
+    const allVisionModels = [...(modelPresets?.visionModels || []), ...customVisionModels];
+    if (allVisionModels.some(m => m.name === newVisionModelName.trim())) {
+      showToast('该模型已存在', 'error');
+      return;
+    }
+    setCustomVisionModels(prev => [...prev, { name: newVisionModelName.trim(), label: newVisionModelLabel.trim() }]);
+    setNewVisionModelName('');
+    setNewVisionModelLabel('');
+    showToast('已添加自定义模型', 'success');
+  }, [newVisionModelName, newVisionModelLabel, modelPresets, customVisionModels, showToast]);
+
+  // Delete custom vision model preset
+  const deleteVisionModelPreset = useCallback((name: string) => {
+    setCustomVisionModels(prev => prev.filter(m => m.name !== name));
+    showToast('已删除自定义模型', 'success');
+  }, [showToast]);
+
+  // Add custom omni model preset
+  const addOmniModelPreset = useCallback(() => {
+    if (!newOmniModelName.trim() || !newOmniModelLabel.trim()) {
+      showToast('请填写模型名称和显示名称', 'error');
+      return;
+    }
+    const allOmniModels = [...(modelPresets?.omniModels || []), ...customOmniModels];
+    if (allOmniModels.some(m => m.name === newOmniModelName.trim())) {
+      showToast('该模型已存在', 'error');
+      return;
+    }
+    setCustomOmniModels(prev => [...prev, { name: newOmniModelName.trim(), label: newOmniModelLabel.trim() }]);
+    setNewOmniModelName('');
+    setNewOmniModelLabel('');
+    showToast('已添加自定义模型', 'success');
+  }, [newOmniModelName, newOmniModelLabel, modelPresets, customOmniModels, showToast]);
+
+  // Delete custom omni model preset
+  const deleteOmniModelPreset = useCallback((name: string) => {
+    setCustomOmniModels(prev => prev.filter(m => m.name !== name));
+    showToast('已删除自定义模型', 'success');
+  }, [showToast]);
+
+  // Merged presets (server defaults + user customizations)
+  const mergedVisionModels = useMemo(() => {
+    const serverModels = modelPresets?.visionModels || [];
+    // Filter out server models that user has deleted (stored as deleted list)
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let deletedServerModels: string[] = [];
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as { deletedVisionModels?: string[] };
+        deletedServerModels = parsed.deletedVisionModels || [];
+      } catch { }
+    }
+    const filteredServerModels = serverModels.filter(m => !deletedServerModels.includes(m.name));
+    return [...filteredServerModels, ...customVisionModels];
+  }, [modelPresets?.visionModels, customVisionModels]);
+
+  const mergedOmniModels = useMemo(() => {
+    const serverModels = modelPresets?.omniModels || [];
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let deletedServerModels: string[] = [];
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as { deletedOmniModels?: string[] };
+        deletedServerModels = parsed.deletedOmniModels || [];
+      } catch { }
+    }
+    const filteredServerModels = serverModels.filter(m => !deletedServerModels.includes(m.name));
+    return [...filteredServerModels, ...customOmniModels];
+  }, [modelPresets?.omniModels, customOmniModels]);
+
+  // Delete any preset (server or custom) - server ones get marked as deleted, custom ones removed
+  const deleteVisionPreset = useCallback((model: ModelPreset) => {
+    const isServerModel = modelPresets?.visionModels?.some(m => m.name === model.name);
+    if (isServerModel) {
+      // Mark server model as deleted
+      const savedPresets = localStorage.getItem('lab_safety_custom_models');
+      let existing: { deletedVisionModels?: string[] } = {};
+      if (savedPresets) {
+        try {
+          existing = JSON.parse(savedPresets) || {};
+        } catch { }
+      }
+      const deletedList = [...(existing.deletedVisionModels || []), model.name];
+      localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+        ...existing,
+        deletedVisionModels: deletedList,
+      }));
+      // Force re-render by updating state
+      setCustomVisionModels(prev => [...prev]);
+      showToast('已从列表移除', 'success');
+    } else {
+      deleteVisionModelPreset(model.name);
+    }
+  }, [modelPresets?.visionModels, deleteVisionModelPreset, showToast]);
+
+  const deleteOmniPreset = useCallback((model: ModelPreset) => {
+    const isServerModel = modelPresets?.omniModels?.some(m => m.name === model.name);
+    if (isServerModel) {
+      const savedPresets = localStorage.getItem('lab_safety_custom_models');
+      let existing: { deletedOmniModels?: string[] } = {};
+      if (savedPresets) {
+        try {
+          existing = JSON.parse(savedPresets) || {};
+        } catch { }
+      }
+      const deletedList = [...(existing.deletedOmniModels || []), model.name];
+      localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+        ...existing,
+        deletedOmniModels: deletedList,
+      }));
+      setCustomOmniModels(prev => [...prev]);
+      showToast('已从列表移除', 'success');
+    } else {
+      deleteOmniModelPreset(model.name);
+    }
+  }, [modelPresets?.omniModels, deleteOmniModelPreset, showToast]);
+
+  // Reset to server defaults (clear all customizations)
+  const resetVisionPresets = useCallback(() => {
+    setCustomVisionModels([]);
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let existing = {};
+    if (savedPresets) {
+      try {
+        existing = JSON.parse(savedPresets) || {};
+      } catch { }
+    }
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      ...existing,
+      deletedVisionModels: [],
+      visionModels: [],
+    }));
+    showToast('已恢复默认预设', 'success');
+  }, [showToast]);
+
+  const resetOmniPresets = useCallback(() => {
+    setCustomOmniModels([]);
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let existing = {};
+    if (savedPresets) {
+      try {
+        existing = JSON.parse(savedPresets) || {};
+      } catch { }
+    }
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      ...existing,
+      deletedOmniModels: [],
+      omniModels: [],
+    }));
+    showToast('已恢复默认预设', 'success');
+  }, [showToast]);
 
   // Use API defaults for model config if localStorage doesn't have them
   useEffect(() => {
@@ -887,7 +1082,7 @@ ${ragContext}
             <label className="field">
               <span>图片/实时检测模型</span>
               <div className="model-input-group">
-                {modelPresets?.visionModels?.length ? (
+                {mergedVisionModels.length ? (
                   <select
                     className="model-select"
                     value=""
@@ -899,7 +1094,7 @@ ${ragContext}
                     }}
                   >
                     <option value="">选择预设模型...</option>
-                    {modelPresets.visionModels.map((model) => (
+                    {mergedVisionModels.map((model) => (
                       <option key={model.name} value={model.name}>{model.label}</option>
                     ))}
                   </select>
@@ -927,10 +1122,50 @@ ${ragContext}
               </div>
             </label>
 
+            {/* Vision model preset management */}
+            <div className="preset-management">
+              <div className="preset-list">
+                {mergedVisionModels.map((model) => (
+                  <div key={model.name} className="preset-item">
+                    <span className="preset-label">{model.label}</span>
+                    <span className="preset-name">{model.name}</span>
+                    <button
+                      type="button"
+                      className="preset-delete-btn"
+                      onClick={() => deleteVisionPreset(model)}
+                      title="从列表移除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="preset-add-form">
+                <input
+                  type="text"
+                  placeholder="模型名称 (如 Qwen/Qwen3-VL-8B)"
+                  value={newVisionModelName}
+                  onChange={(e) => setNewVisionModelName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="显示名称 (如 Qwen3-VL-8B)"
+                  value={newVisionModelLabel}
+                  onChange={(e) => setNewVisionModelLabel(e.target.value)}
+                />
+                <button type="button" className="preset-add-btn" onClick={addVisionModelPreset}>
+                  添加
+                </button>
+              </div>
+              <button type="button" className="preset-reset-btn" onClick={resetVisionPresets}>
+                恢复默认预设
+              </button>
+            </div>
+
             <label className="field">
               <span>多模态咨询模型</span>
               <div className="model-input-group">
-                {modelPresets?.omniModels?.length ? (
+                {mergedOmniModels.length ? (
                   <select
                     className="model-select"
                     value=""
@@ -942,7 +1177,7 @@ ${ragContext}
                     }}
                   >
                     <option value="">选择预设模型...</option>
-                    {modelPresets.omniModels.map((model) => (
+                    {mergedOmniModels.map((model) => (
                       <option key={model.name} value={model.name}>{model.label}</option>
                     ))}
                   </select>
@@ -969,6 +1204,46 @@ ${ragContext}
                 </button>
               </div>
             </label>
+
+            {/* Omni model preset management */}
+            <div className="preset-management">
+              <div className="preset-list">
+                {mergedOmniModels.map((model) => (
+                  <div key={model.name} className="preset-item">
+                    <span className="preset-label">{model.label}</span>
+                    <span className="preset-name">{model.name}</span>
+                    <button
+                      type="button"
+                      className="preset-delete-btn"
+                      onClick={() => deleteOmniPreset(model)}
+                      title="从列表移除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="preset-add-form">
+                <input
+                  type="text"
+                  placeholder="模型名称 (如 Qwen/Qwen3-Omni-7B)"
+                  value={newOmniModelName}
+                  onChange={(e) => setNewOmniModelName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="显示名称 (如 Qwen3-Omni-7B)"
+                  value={newOmniModelLabel}
+                  onChange={(e) => setNewOmniModelLabel(e.target.value)}
+                />
+                <button type="button" className="preset-add-btn" onClick={addOmniModelPreset}>
+                  添加
+                </button>
+              </div>
+              <button type="button" className="preset-reset-btn" onClick={resetOmniPresets}>
+                恢复默认预设
+              </button>
+            </div>
           </section>
         </div>
       ) : null}
