@@ -72,6 +72,8 @@ type ApiSettings = {
   apiKey: string;
   baseUrl: string;
   githubUrl: string;
+  hazardModel: string;
+  omniModel: string;
 };
 
 type MediaAsset = {
@@ -108,6 +110,8 @@ function App() {
     apiKey: DEFAULT_API_KEY,
     baseUrl: DEFAULT_BASE_URL,
     githubUrl: DEFAULT_GITHUB_URL,
+    hazardModel: HAZARD_MODEL,
+    omniModel: OMNI_MODEL,
   });
 
   const [hazardPrompt, setHazardPrompt] = useState(DEFAULT_HAZARD_PROMPT);
@@ -147,12 +151,16 @@ function App() {
         apiKey: parsed.apiKey || DEFAULT_API_KEY,
         baseUrl: parsed.baseUrl || DEFAULT_BASE_URL,
         githubUrl: parsed.githubUrl || DEFAULT_GITHUB_URL,
+        hazardModel: parsed.hazardModel || HAZARD_MODEL,
+        omniModel: parsed.omniModel || OMNI_MODEL,
       });
     } catch {
       setSettings({
         apiKey: DEFAULT_API_KEY,
         baseUrl: DEFAULT_BASE_URL,
         githubUrl: DEFAULT_GITHUB_URL,
+        hazardModel: HAZARD_MODEL,
+        omniModel: OMNI_MODEL,
       });
     }
   }, []);
