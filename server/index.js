@@ -6,6 +6,28 @@ import { initRag, ragSearch } from './rag.js';
 const app = express();
 const port = process.env.SERVER_PORT || 3001;
 
+// Helper function to detect model-related errors and format clearer messages
+function formatModelError(originalMessage, model) {
+  const lowerMsg = (originalMessage || '').toLowerCase();
+
+  // Detect common model error patterns
+  if (
+    lowerMsg.includes('model not found') ||
+    lowerMsg.includes('invalid model') ||
+    lowerMsg.includes('model does not exist') ||
+    lowerMsg.includes('unsupported model') ||
+    lowerMsg.includes('unknown model') ||
+    lowerMsg.includes('model unavailable') ||
+    lowerMsg.includes('no such model') ||
+    lowerMsg.includes('模型不存在') ||
+    lowerMsg.includes('模型不可用')
+  ) {
+    return `模型 "${model}" 不存在或不可用，请检查模型名称是否正确，或在设置中选择预设模型。`;
+  }
+
+  return originalMessage;
+}
+
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
@@ -81,8 +103,11 @@ app.post('/api/chat', async (request, response) => {
     }
 
     if (!upstream.ok) {
+      const originalError = payload?.error?.message || payload?.message || `上游接口错误: ${upstream.status}`;
+      const formattedError = formatModelError(originalError, model);
       response.status(upstream.status).json({
-        error: payload?.error?.message || payload?.message || `上游接口错误: ${upstream.status}`,
+        error: formattedError,
+        isModelError: formattedError !== originalError,
         upstream: payload,
       });
       return;
@@ -141,8 +166,11 @@ app.post('/api/chat-stream', async (request, response) => {
       } catch {
         payload = { raw: rawText };
       }
+      const originalError = payload?.error?.message || payload?.message || `上游接口错误: ${upstream.status}`;
+      const formattedError = formatModelError(originalError, model);
       response.status(upstream.status || 500).json({
-        error: payload?.error?.message || payload?.message || `上游接口错误: ${upstream.status}`,
+        error: formattedError,
+        isModelError: formattedError !== originalError,
       });
       return;
     }
