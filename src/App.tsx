@@ -909,6 +909,19 @@ ${ragContext}
                   onChange={(event) => setSettings((prev) => ({ ...prev, hazardModel: event.target.value }))}
                   placeholder={HAZARD_MODEL}
                 />
+                <button
+                  type="button"
+                  className="reset-model-btn"
+                  onClick={() => {
+                    if (modelPresets?.defaults?.vision) {
+                      setSettings((prev) => ({ ...prev, hazardModel: modelPresets.defaults.vision }));
+                      showToast('已恢复默认模型', 'success');
+                    }
+                  }}
+                  disabled={!modelPresets?.defaults?.vision}
+                >
+                  重置
+                </button>
               </div>
             </label>
 
@@ -937,6 +950,19 @@ ${ragContext}
                   onChange={(event) => setSettings((prev) => ({ ...prev, omniModel: event.target.value }))}
                   placeholder={OMNI_MODEL}
                 />
+                <button
+                  type="button"
+                  className="reset-model-btn"
+                  onClick={() => {
+                    if (modelPresets?.defaults?.omni) {
+                      setSettings((prev) => ({ ...prev, omniModel: modelPresets.defaults.omni }));
+                      showToast('已恢复默认模型', 'success');
+                    }
+                  }}
+                  disabled={!modelPresets?.defaults?.omni}
+                >
+                  重置
+                </button>
               </div>
             </label>
           </section>

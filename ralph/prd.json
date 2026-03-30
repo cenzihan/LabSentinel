@@ -99,7 +99,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "依赖 US-001 和 US-004"
     },
     {
@@ -115,7 +115,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "依赖 US-002（defaults）、US-003（UI 位置）、US-006（Toast）"
     },
     {

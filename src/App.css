@@ -133,3 +133,6 @@
 .model-select { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; font-weight: 700; font: inherit; cursor: pointer; outline: none; }
 .model-select:focus { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
 .model-input-group input { width: 100%; }
+.reset-model-btn { margin-top: .25rem; padding: .6rem 1rem; border-radius: .75rem; border: 0; background: #f1f5f9; color: #64748b; font-weight: 700; font-size: .88rem; cursor: pointer; transition: .2s ease; }
+.reset-model-btn:hover:not(:disabled) { background: #e2e8f0; color: #334155; }
+.reset-model-btn:disabled { opacity: .5; cursor: not-allowed; }
