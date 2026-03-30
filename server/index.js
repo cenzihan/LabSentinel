@@ -13,6 +13,34 @@ app.get('/api/health', (_request, response) => {
   response.json({ ok: true, service: 'lab-safety-proxy' });
 });
 
+// Preset model lists for frontend selection
+const VISION_MODELS = [
+  { name: 'Qwen/Qwen2-VL-7B-Instruct', label: 'Qwen2-VL-7B' },
+  { name: 'Qwen/Qwen2.5-VL-32B-Instruct', label: 'Qwen2.5-VL-32B' },
+  { name: 'Qwen/Qwen3-VL-32B-Instruct', label: 'Qwen3-VL-32B (推荐)' },
+  { name: 'deepseek-ai/deepseek-vl2', label: 'DeepSeek-VL2' },
+  { name: 'THUDM/glm-4v-9b', label: 'GLM-4V-9B' },
+];
+
+const OMNI_MODELS = [
+  { name: 'Qwen/Qwen2.5-Omni-7B', label: 'Qwen2.5-Omni-7B' },
+  { name: 'Qwen/Qwen3-Omni-30B-A3B-Instruct', label: 'Qwen3-Omni-30B (推荐)' },
+];
+
+app.get('/api/models', (_request, response) => {
+  const defaultVision = process.env.VITE_HAZARD_MODEL || 'Qwen/Qwen3-VL-32B-Instruct';
+  const defaultOmni = process.env.VITE_OMNI_MODEL || 'Qwen/Qwen3-Omni-30B-A3B-Instruct';
+
+  response.json({
+    visionModels: VISION_MODELS,
+    omniModels: OMNI_MODELS,
+    defaults: {
+      vision: defaultVision,
+      omni: defaultOmni,
+    },
+  });
+});
+
 app.post('/api/chat', async (request, response) => {
   const { apiKey, baseUrl, model, messages } = request.body ?? {};
 
