@@ -62,6 +62,15 @@
 .result-tab.active { background: #eff6ff; color: #2563eb; }
 .vision-result-body { flex: 1; overflow: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1rem; }
 .vision-result-empty { min-height: 420px; display: flex; flex-direction: column; gap: .8rem; justify-content: center; }
+
+/* Streaming intro text while waiting for API */
+.intro-streaming-container { min-height: 420px; padding: 1.5rem; display: flex; flex-direction: column; }
+.intro-streaming-text { flex: 1; line-height: 1.8; color: #334155; }
+.intro-streaming-text p { margin: 0 0 .8rem; }
+.intro-streaming-text p:first-child { font-weight: 700; color: #1e40af; font-size: 1.1rem; }
+.intro-streaming-cursor { margin-top: 1rem; }
+.typing-cursor { animation: blink 1s infinite; color: #2563eb; font-weight: 700; }
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .vision-raw-block { margin-top: 1rem; }
 .vision-raw-block h4 { margin: 0 0 .5rem; }
 .vision-raw-block textarea { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; resize: vertical; font: inherit; }

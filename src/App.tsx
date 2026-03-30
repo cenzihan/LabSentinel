@@ -1622,33 +1622,106 @@ async function callProxySafe({ settings, model, messages }: { settings: ApiSetti
   };
 }
 
+// Project introduction text for streaming display while waiting for API
+const PROJECT_INTRO = `LabSentinel 是一款面向高校实验室的智能安全巡检系统。
+
+本系统利用多模态大语言模型，实时识别化学、材料、生物、电子等实验场景中的安全隐患。
+
+核心功能包括：
+• 实时视频流检测 - AI 定期截取画面并分析
+• 图片隐患识别 - 上传照片获取结构化检测报告
+• 多模态咨询 - 支持文本、图片、视频、音频组合输入
+• RAG 增强检索 - 结合实验室安全规范进行智能建议
+
+检测维度覆盖：个人防护、化学品安全、设备操作、气体压力容器、环境管理、生物样品管理等。
+
+技术架构：前端 React + TypeScript，后端 Express 代理，对接 SiliconFlow 视觉语言模型 API。
+
+本系统由 i3c 实验室开发，旨在提升实验室安全管理效率，降低安全事故风险。
+
+正在等待 AI 分析结果...`;
+
 function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<HazardResult | null>(null);
   const [error, setError] = useState('');
-  
+  const [introText, setIntroText] = useState('');
+  const [showIntro, setShowIntro] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<number | null>(null);
+  const introIntervalRef = useRef<number | null>(null);
   const isDetectingRef = useRef(false);
+  const introIndexRef = useRef(0);
 
   useEffect(() => {
     isDetectingRef.current = isDetecting;
   }, [isDetecting]);
 
+  // Stream intro text character by character
+  const startIntroStreaming = useCallback(() => {
+    setIntroText('');
+    setShowIntro(true);
+    introIndexRef.current = 0;
+
+    // Clear any existing intro interval
+    if (introIntervalRef.current !== null) {
+      window.clearInterval(introIntervalRef.current);
+    }
+
+    introIntervalRef.current = window.setInterval(() => {
+      if (!isDetectingRef.current) {
+        // Stop streaming if detection stopped
+        if (introIntervalRef.current !== null) {
+          window.clearInterval(introIntervalRef.current);
+          introIntervalRef.current = null;
+        }
+        return;
+      }
+
+      const nextIndex = introIndexRef.current + 1;
+      if (nextIndex <= PROJECT_INTRO.length) {
+        setIntroText(PROJECT_INTRO.slice(0, nextIndex));
+        introIndexRef.current = nextIndex;
+      } else {
+        // Finished streaming, keep showing full intro until result comes
+        if (introIntervalRef.current !== null) {
+          window.clearInterval(introIntervalRef.current);
+          introIntervalRef.current = null;
+        }
+      }
+    }, 30); // 30ms per character for smooth streaming
+  }, []);
+
+  // Stop intro streaming and clear results
   const stopDetection = useCallback(() => {
     setIsDetecting(false);
-    
+
+    // Clear detection interval
     if (intervalRef.current !== null) {
       window.clearTimeout(intervalRef.current);
       intervalRef.current = null;
     }
+
+    // Clear intro streaming interval
+    if (introIntervalRef.current !== null) {
+      window.clearInterval(introIntervalRef.current);
+      introIntervalRef.current = null;
+    }
+
+    // Clear camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+
+    // Clear all results and intro
+    setResult(null);
+    setIntroText('');
+    setShowIntro(false);
   }, []);
 
   useEffect(() => {
@@ -1686,9 +1759,12 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
       setError('');
       setResult(null);
 
+      // Start streaming intro text while waiting for API
+      startIntroStreaming();
+
       const loop = async () => {
          if (!isDetectingRef.current) return;
-         
+
          setIsAnalyzing(true);
          const video = videoRef.current;
          const canvas = canvasRef.current;
@@ -1713,11 +1789,18 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                         ],
                       },
                     ],
-                    onChunk: () => {}, 
+                    onChunk: () => {},
                   });
-                  const parsed = parseJsonFromText(step1Text) as HazardResult;
-                  setResult(parsed);
-                  setError('');
+
+                  // Only update if still detecting
+                  if (isDetectingRef.current) {
+                    const parsed = parseJsonFromText(step1Text) as HazardResult;
+                    setResult(parsed);
+                    // Hide intro once we have real results
+                    setShowIntro(false);
+                    setIntroText('');
+                    setError('');
+                  }
                } catch (err) {
                   // silent fail for loop, just wait for next tick
                   console.warn('Live detection check failed', err);
@@ -1814,6 +1897,18 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                   ) : (
                     <div className="empty-state small">未发现具体隐患。</div>
                   )}
+                </div>
+              </div>
+            ) : showIntro && introText ? (
+              // Show streaming intro while waiting for API response
+              <div className="intro-streaming-container">
+                <div className="intro-streaming-text">
+                  {introText.split('\n').map((line, idx) => (
+                    <p key={idx}>{line}</p>
+                  ))}
+                </div>
+                <div className="intro-streaming-cursor">
+                  <span className="typing-cursor">|</span>
                 </div>
               </div>
             ) : (
