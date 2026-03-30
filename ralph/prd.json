@@ -81,7 +81,7 @@
         "Typecheck 通过"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "依赖 US-001 的类型扩展"
     },
     {

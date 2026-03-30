@@ -158,6 +158,43 @@ function App() {
     fetchModelPresets();
   }, []);
 
+  // Use API defaults for model config if localStorage doesn't have them
+  useEffect(() => {
+    if (!modelPresets) return;
+
+    const saved = localStorage.getItem('lab_safety_settings');
+    if (!saved) {
+      // No localStorage at all - use API defaults
+      setSettings(prev => ({
+        ...prev,
+        hazardModel: modelPresets.defaults.vision,
+        omniModel: modelPresets.defaults.omni,
+      }));
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Partial<ApiSettings>;
+      // If localStorage doesn't have hazardModel or omniModel, use API defaults
+      const needsVisionDefault = !parsed.hazardModel;
+      const needsOmniDefault = !parsed.omniModel;
+      if (needsVisionDefault || needsOmniDefault) {
+        setSettings(prev => ({
+          ...prev,
+          hazardModel: needsVisionDefault ? modelPresets.defaults.vision : prev.hazardModel,
+          omniModel: needsOmniDefault ? modelPresets.defaults.omni : prev.omniModel,
+        }));
+      }
+    } catch {
+      // Invalid localStorage - use API defaults
+      setSettings(prev => ({
+        ...prev,
+        hazardModel: modelPresets.defaults.vision,
+        omniModel: modelPresets.defaults.omni,
+      }));
+    }
+  }, [modelPresets]);
+
   useEffect(() => {
     if (!toast.visible) return;
     const timer = window.setTimeout(() => {
