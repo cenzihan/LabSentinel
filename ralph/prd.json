@@ -1,0 +1,153 @@
+{
+  "project": "LabSentinel",
+  "branchName": "ralph/model-selection-config",
+  "description": "模型选择配置功能 - 用户可在设置界面选择或自定义模型名称，支持预设列表、Toast提示和重置按钮",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "扩展 ApiSettings 类型",
+      "description": "作为开发者，需要扩展 ApiSettings 类型以支持模型配置字段，为后续 UI 和逻辑开发提供数据基础。",
+      "acceptanceCriteria": [
+        "在 ApiSettings 类型中新增 hazardModel: string 字段",
+        "在 ApiSettings 类型中新增 omniModel: string 字段",
+        "默认值分别使用现有的 HAZARD_MODEL 和 OMNI_MODEL 常量",
+        "更新 settings state 初始化逻辑，包含新字段的默认值",
+        "Typecheck 通过"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "后端提供模型列表 API",
+      "description": "作为开发者，需要新增后端接口返回可用的预设模型列表，前端据此动态渲染下拉选项。",
+      "acceptanceCriteria": [
+        "新增 /api/models GET 接口",
+        "返回 JSON 包含 visionModels 数组（每个含 name 和 label）",
+        "返回 JSON 包含 omniModels 数组（每个含 name 和 label）",
+        "返回 JSON 包含 defaults 对象（vision 和 omni 字段）",
+        "接口支持 CORS，前端可正常调用",
+        "Typecheck 通过"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "新增 Toast 组件",
+      "description": "作为开发者，需要实现 Toast 提示组件，用于模型切换成功后的用户反馈。",
+      "acceptanceCriteria": [
+        "新增 Toast 组件，支持 success/warning/error 三种类型",
+        "Toast 在页面顶部中央显示",
+        "Toast 3 秒后自动消失",
+        "使用 React state 管理 Toast 显示状态",
+        "Toast 样式与应用整体风格一致（圆角、阴影）",
+        "Typecheck 通过"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "独立组件，可在 US-003 之前完成"
+    },
+    {
+      "id": "US-003",
+      "title": "设置界面新增模型选择区域",
+      "description": "作为用户，我希望在设置弹窗中看到模型配置选项，以便选择或输入我想使用的模型。",
+      "acceptanceCriteria": [
+        "设置弹窗新增"模型配置"分组标题",
+        "新增"图片/实时检测模型"输入区域",
+        "新增"多模态咨询模型"输入区域",
+        "每个区域包含预设下拉列表（从 /api/models 获取）",
+        "每个区域包含自定义文本输入框",
+        "选择预设后自动填充到输入框",
+        "输入框显示当前选择的模型名称",
+        "Typecheck 通过",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "依赖 US-002 的 /api/models 接口"
+    },
+    {
+      "id": "US-004",
+      "title": "模型配置持久化",
+      "description": "作为用户，我希望我的模型选择在刷新页面后仍然保留，不必每次重新配置。",
+      "acceptanceCriteria": [
+        "模型配置与现有设置一起保存到 localStorage（key: lab_safety_settings）",
+        "应用启动时从 localStorage 读取并恢复模型配置",
+        "若 localStorage 中无模型配置，使用 /api/models 返回的 defaults",
+        "配置变更时立即保存（onChange 触发）",
+        "Typecheck 通过"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "依赖 US-001 的类型扩展"
+    },
+    {
+      "id": "US-005",
+      "title": "功能模块使用用户选择的模型",
+      "description": "作为用户，我希望各个功能模块实际使用我配置的模型，而非硬编码的默认模型。",
+      "acceptanceCriteria": [
+        "图片安全隐患检测模块使用 settings.hazardModel",
+        "实时安全检测模块使用 settings.hazardModel",
+        "多模态安全咨询模块使用 settings.omniModel",
+        "顶部导航栏 engine-badge 显示当前使用的模型名称",
+        "各功能模块的 model-chip 标签显示当前模型名称",
+        "删除或不再使用硬编码的 HAZARD_MODEL/OMNI_MODEL 常量",
+        "Typecheck 通过",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "依赖 US-001 和 US-004"
+    },
+    {
+      "id": "US-007",
+      "title": "重置为默认按钮",
+      "description": "作为用户，我希望有快捷按钮将模型恢复为默认配置。",
+      "acceptanceCriteria": [
+        "每个模型输入区域旁新增"重置"文字按钮",
+        "点击重置按钮，该模型恢复为 /api/models 返回的 defaults 值",
+        "重置后触发 Toast 提示"已恢复默认模型"",
+        "重置操作立即保存到 localStorage",
+        "Typecheck 通过",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "依赖 US-002（defaults）、US-003（UI 位置）、US-006（Toast）"
+    },
+    {
+      "id": "US-008",
+      "title": "模型切换 Toast 提示集成",
+      "description": "作为用户，我希望在选择模型后看到成功提示，确认配置已生效。",
+      "acceptanceCriteria": [
+        "模型配置变更后（输入框内容变化）触发 Toast 显示",
+        "Toast 显示"模型配置已更新"成功消息",
+        "Toast 使用 US-006 创建的组件",
+        "Typecheck 通过",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "依赖 US-006（Toast 组件）"
+    },
+    {
+      "id": "US-009",
+      "title": "后端模型错误提示优化",
+      "description": "作为用户，当我配置了无效模型名称时，我希望得到清晰的错误提示。",
+      "acceptanceCriteria": [
+        "后端 /api/chat 在模型错误时返回明确的错误信息",
+        "后端 /api/chat-stream 在模型错误时返回明确的错误信息",
+        "错误信息包含模型不存在或不可用的提示",
+        "前端在收到模型错误时显示请检查模型名称的建议",
+        "Typecheck 通过",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
