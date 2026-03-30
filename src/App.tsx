@@ -418,6 +418,9 @@ function App() {
   const [hazardResult, setHazardResult] = useState<HazardResult | null>(null);
   const [ragExcerpts, setRagExcerpts] = useState<Array<{ idx: number; text: string }>>([]);
 
+  // AbortController for hazard analysis
+  const hazardAbortControllerRef = useRef<AbortController | null>(null);
+
   const [omniSystemPrompt, setOmniSystemPrompt] = useState(DEFAULT_OMNI_SYSTEM_PROMPT);
   const [omniUserPrompt, setOmniUserPrompt] = useState('请结合我上传的内容，分析是否存在实验室安全隐患，并给出整改建议。');
   const [omniImage, setOmniImage] = useState<MediaAsset | null>(null);
@@ -506,12 +509,30 @@ function App() {
     await handleSingleFile(file, setHazardImage);
   }
 
+  // Stop hazard analysis and abort ongoing requests
+  function stopHazardAnalysis() {
+    if (hazardAbortControllerRef.current) {
+      hazardAbortControllerRef.current.abort();
+      hazardAbortControllerRef.current = null;
+    }
+    setHazardLoading(false);
+    setHazardStep('');
+    setHazardError('分析已中断');
+    setHazardRaw('');
+    setHazardResult(null);
+    setRagExcerpts([]);
+  }
+
   async function handleHazardSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hazardImage) {
       setHazardError('请先上传、拖入或拍摄一张实验室图片。');
       return;
     }
+
+    // Create new AbortController for this analysis
+    hazardAbortControllerRef.current = new AbortController();
+    const abortSignal = hazardAbortControllerRef.current.signal;
 
     setHazardLoading(true);
     setHazardStep('步骤 1/3：AI 识别隐患...');
@@ -536,7 +557,11 @@ function App() {
           },
         ],
         onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
+        abortSignal,
       });
+
+      // Check if aborted after step 1
+      if (abortSignal.aborted) return;
 
       const step1Raw = parseJsonFromText(step1Text) as HazardResult;
 
@@ -561,22 +586,29 @@ function App() {
       const keywords = extractHazardKeywords(step1Result);
       let excerpts: string[] = [];
 
-      if (keywords.length > 0) {
+      if (keywords.length > 0 && !abortSignal.aborted) {
         try {
           const ragResponse = await fetch('/api/rag-search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ keywords, topK: 5 }),
+            signal: abortSignal,
           });
           if (ragResponse.ok) {
             const ragData = await ragResponse.json();
             excerpts = (ragData.results || []).map((r: { text: string }) => r.text);
             setRagExcerpts(excerpts.map((text: string, i: number) => ({ idx: i + 1, text })));
           }
-        } catch {
+        } catch (ragError) {
           // RAG search failure is non-fatal; continue without regulation context
+          if (ragError instanceof Error && ragError.name === 'AbortError') {
+            return; // Abort during RAG search
+          }
         }
       }
+
+      // Check if aborted before step 3
+      if (abortSignal.aborted) return;
 
       // Step 3: If we have regulation excerpts, do a second VLM call with context
       if (excerpts.length > 0) {
@@ -611,7 +643,11 @@ ${ragContext}
             },
           ],
           onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
+          abortSignal,
         });
+
+        // Check if aborted after step 3
+        if (abortSignal.aborted) return;
 
         const finalRaw = parseJsonFromText(finalText) as HazardResult;
 
@@ -664,10 +700,18 @@ ${ragContext}
         setHazardResult(step1Result);
       }
     } catch (error) {
+      // Handle AbortError specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        setHazardError('分析已中断');
+        setHazardRaw('');
+        setHazardResult(null);
+        return;
+      }
       setHazardError(getErrorMessage(error));
     } finally {
       setHazardLoading(false);
       setHazardStep('');
+      hazardAbortControllerRef.current = null;
     }
   }
 
@@ -868,10 +912,18 @@ ${ragContext}
                     <ConfigIcon />
                     Prompt 配置
                   </button>
-                  <button className="primary-action" type="submit" onClick={(event) => void handleHazardSubmit(event as unknown as FormEvent<HTMLFormElement>)} disabled={hazardLoading || !hazardImage}>
-                    {hazardLoading ? (hazardStep || '分析中...') : '开始检测'}
-                  </button>
+                  {hazardLoading ? (
+                    <button className="warn-button" type="button" onClick={stopHazardAnalysis}>
+                      停止分析
+                    </button>
+                  ) : (
+                    <button className="primary-action" type="submit" onClick={(event) => void handleHazardSubmit(event as unknown as FormEvent<HTMLFormElement>)} disabled={!hazardImage}>
+                      开始检测
+                    </button>
+                  )}
                 </div>
+
+                {hazardLoading && hazardStep ? <div className="status-indicator"><span className="engine-dot"></span>{hazardStep}</div> : null}
 
                 {hazardError ? <div className="error-box">{hazardError}</div> : null}
               </div>
@@ -947,10 +999,21 @@ ${ragContext}
                   )}
                 </div>
 
-                {hazardRaw ? (
+                {hazardRaw || hazardResult ? (
                   <div className="vision-raw-block">
                     <h4>原始输出</h4>
-                    <textarea value={hazardRaw} readOnly rows={8} />
+                    {hazardResult ? (
+                      // Show formatted JSON after analysis completes
+                      <textarea
+                        value={JSON.stringify(hazardResult, null, 2)}
+                        readOnly
+                        rows={12}
+                        className="json-output"
+                      />
+                    ) : (
+                      // Show streaming output during analysis
+                      <textarea value={hazardRaw} readOnly rows={8} />
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -1545,11 +1608,12 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '请求失败，请检查网络、API Key 或模型配置。';
 }
 
-async function callProxyStream({ settings, model, messages, onChunk }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; }) {
+async function callProxyStream({ settings, model, messages, onChunk, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; abortSignal?: AbortSignal; }) {
   const response = await fetch('/api/chat-stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model, messages }),
+    signal: abortSignal,
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -1582,10 +1646,14 @@ async function callProxyStream({ settings, model, messages, onChunk }: { setting
   return finalText;
 }
 
-async function callProxyWithFallback({ settings, model, messages, onChunk }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; }) {
+async function callProxyWithFallback({ settings, model, messages, onChunk, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; abortSignal?: AbortSignal; }) {
   try {
-    return await callProxyStream({ settings, model, messages, onChunk });
+    return await callProxyStream({ settings, model, messages, onChunk, abortSignal });
   } catch (error) {
+    // Don't fallback on abort errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     const message = getErrorMessage(error);
     const shouldFallback =
       message.includes('代理请求失败') ||
@@ -1596,7 +1664,7 @@ async function callProxyWithFallback({ settings, model, messages, onChunk }: { s
       throw error;
     }
 
-    const fallback = await callProxySafe({ settings, model, messages });
+    const fallback = await callProxySafe({ settings, model, messages, abortSignal });
     if (fallback.content) {
       onChunk(fallback.content);
     }
@@ -1604,11 +1672,12 @@ async function callProxyWithFallback({ settings, model, messages, onChunk }: { s
   }
 }
 
-async function callProxySafe({ settings, model, messages }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>> }) {
+async function callProxySafe({ settings, model, messages, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; abortSignal?: AbortSignal; }) {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model, messages }),
+    signal: abortSignal,
   });
 
   const payload = await response.json().catch(() => ({}));

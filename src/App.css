@@ -74,6 +74,11 @@
 .vision-raw-block { margin-top: 1rem; }
 .vision-raw-block h4 { margin: 0 0 .5rem; }
 .vision-raw-block textarea { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; resize: vertical; font: inherit; }
+.vision-raw-block textarea.json-output { font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace; font-size: .85rem; line-height: 1.5; background: #f8fafc; }
+
+/* Status indicator for analysis progress */
+.status-indicator { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; margin-top: .5rem; background: #eff6ff; border-radius: .5rem; color: #1e40af; font-size: .9rem; }
+.status-indicator .engine-dot { width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; animation: pulse 1.5s infinite; box-shadow: 0 0 8px #3b82f6; }
 .preview-card, .empty-state, .media-preview-wrap, .response-box, .result-block, .hazard-item, .note-box, .error-box, .status-banner, .media-card { border-radius: 1rem; }
 .preview-card, .media-preview-wrap, .response-box, .result-block, .hazard-item, .note-box, .media-card { border: 1px solid #e2e8f0; background: #f8fafc; }
 .preview-card, .media-preview-wrap, .response-box, .result-block, .hazard-item, .media-card { padding: 1rem; }
