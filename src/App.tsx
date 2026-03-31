@@ -67,6 +67,7 @@ const DEFAULT_OMNI_SYSTEM_PROMPT = `你是一名“实验室安全多模态助�
 - 建议措施`;
 
 type TabId = 'hazard' | 'omni' | 'realtime';
+type HazardSubTabId = 'summary' | 'location' | 'priority';
 
 type ToastType = 'success' | 'warning' | 'error';
 
@@ -414,8 +415,9 @@ function App() {
   const [hazardLoading, setHazardLoading] = useState(false);
   const [hazardStep, setHazardStep] = useState('');
   const [hazardError, setHazardError] = useState('');
-  const [hazardRaw, setHazardRaw] = useState('');
+  const [, setHazardRaw] = useState('');
   const [hazardResult, setHazardResult] = useState<HazardResult | null>(null);
+  const [hazardSubTab, setHazardSubTab] = useState<HazardSubTabId>('summary');
   const [ragExcerpts, setRagExcerpts] = useState<Array<{ idx: number; text: string }>>([]);
 
   // AbortController for hazard analysis
@@ -520,6 +522,7 @@ function App() {
     setHazardError('分析已中断');
     setHazardRaw('');
     setHazardResult(null);
+    setHazardSubTab('summary');
     setRagExcerpts([]);
   }
 
@@ -539,6 +542,7 @@ function App() {
     setHazardError('');
     setHazardRaw('');
     setHazardResult(null);
+    setHazardSubTab('summary');
     setRagExcerpts([]);
 
     try {
@@ -705,6 +709,7 @@ ${ragContext}
         setHazardError('分析已中断');
         setHazardRaw('');
         setHazardResult(null);
+        setHazardSubTab('summary');
         return;
       }
       setHazardError(getErrorMessage(error));
@@ -856,9 +861,9 @@ ${ragContext}
         </div>
       </header>
 
-      <main className="page-content">
+      <main className={activeTab === 'hazard' ? 'page-content page-content-hazard' : 'page-content'}>
         {activeTab === 'hazard' && (
-          <section className="page-view vision-layout">
+          <section className="page-view vision-layout hazard-layout">
             <div className="vision-left">
               <div className="vision-upload-card">
                 <div className="vision-card-head">
@@ -933,63 +938,92 @@ ${ragContext}
               <div className="vision-result-card">
                 <div className="vision-result-head">
                   <div className="result-tab-group">
-                    <button className="result-tab active" type="button">结果</button>
-                    {hazardRaw ? <button className="result-tab" type="button">原始 JSON</button> : null}
+                    {hazardResult ? (
+                      <>
+                        <button className={hazardSubTab === 'summary' ? 'result-tab active' : 'result-tab'} type="button" onClick={() => setHazardSubTab('summary')}>
+                          总结与条例
+                        </button>
+                        <button className={hazardSubTab === 'location' ? 'result-tab active' : 'result-tab'} type="button" onClick={() => setHazardSubTab('location')}>
+                          隐患定位
+                        </button>
+                        <button className={hazardSubTab === 'priority' ? 'result-tab active' : 'result-tab'} type="button" onClick={() => setHazardSubTab('priority')}>
+                          整改优先级
+                        </button>
+                      </>
+                    ) : (
+                      <button className="result-tab active" type="button">结果</button>
+                    )}
                   </div>
                 </div>
 
                 <div className="vision-result-body">
                   {hazardResult ? (
                     <div className="result-stack">
-                      <div className={hazardResult.has_hazard ? 'status-banner danger' : 'status-banner safe'}>
-                        <strong>{hazardResult.has_hazard ? '检测到安全隐患' : '未检测到明显隐患'}</strong>
-                        <span>{hazardResult.overall_risk_level || '待返回'}</span>
-                      </div>
-                      {hazardImage && hazardResult?.hazards?.length ? (
-                        <div className="result-block">
-                          <h4>隐患标注图</h4>
-                          <BboxOverlay imageSrc={hazardImage.previewUrl} hazards={hazardResult.hazards} />
-                        </div>
-                      ) : null}
-                      <ResultBlock title="总结" content={hazardResult.summary || '暂无总结。'} />
-                      <div className="result-block">
-                        <h4>隐患条目</h4>
-                        {hazardResult.hazards?.length ? (
-                          <div className="hazard-list">
-                            {hazardResult.hazards.map((item, index) => (
-                              <article className="hazard-item" key={`${item.type || 'hazard'}-${index}`}>
-                                <div className="hazard-head">
-                                  <span className="hazard-area-badge" style={{ backgroundColor: BBOX_COLORS[index % BBOX_COLORS.length] }}>
-                                    区域 {item.id ?? index + 1}
-                                  </span>
-                                  <strong>{item.type || `隐患 ${index + 1}`}</strong>
-                                  <span>{item.risk_level || '未评级'}</span>
-                                </div>
-                                <p><strong>证据:</strong> {item.evidence || '暂无'}</p>
-                                <p><strong>影响:</strong> {item.impact || '暂无'}</p>
-                                <p><strong>建议:</strong> <SuggestionWithLinks text={item.suggestion || '暂无'} /></p>
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="empty-state small">当前没有返回具体隐患条目。</div>
-                        )}
-                      </div>
-                      {ragExcerpts.length > 0 ? (
-                        <div className="result-block">
-                          <h4>参考安全条例</h4>
-                          <div className="rag-excerpt-list">
-                            {ragExcerpts.map((excerpt) => (
-                              <div className="rag-excerpt" key={`rag-${excerpt.idx}`} id={`rag-excerpt-${excerpt.idx}`}>
-                                <span className="rag-excerpt-badge">条例片段 {excerpt.idx}</span>
-                                <p>{excerpt.text}</p>
+                      {hazardSubTab === 'location' ? (
+                        <section className="hazard-subtab-panel">
+                          {hazardImage && hazardResult?.hazards?.length ? (
+                            <div className="result-block">
+                              <h4>隐患标注图</h4>
+                              <BboxOverlay imageSrc={hazardImage.previewUrl} hazards={hazardResult.hazards} />
+                            </div>
+                          ) : null}
+                          <div className="result-block">
+                            <h4>隐患条目</h4>
+                            {hazardResult.hazards?.length ? (
+                              <div className="hazard-list">
+                                {hazardResult.hazards.map((item, index) => (
+                                  <article className="hazard-item" key={`${item.type || 'hazard'}-${index}`}>
+                                    <div className="hazard-head">
+                                      <span className="hazard-area-badge" style={{ backgroundColor: BBOX_COLORS[index % BBOX_COLORS.length] }}>
+                                        区域 {item.id ?? index + 1}
+                                      </span>
+                                      <strong>{item.type || `隐患 ${index + 1}`}</strong>
+                                      <span>{item.risk_level || '未评级'}</span>
+                                    </div>
+                                    <p><strong>证据:</strong> {item.evidence || '暂无'}</p>
+                                    <p><strong>影响:</strong> {item.impact || '暂无'}</p>
+                                    <p><strong>建议:</strong> <SuggestionWithLinks text={item.suggestion || '暂无'} /></p>
+                                  </article>
+                                ))}
                               </div>
-                            ))}
+                            ) : (
+                              <div className="empty-state small">当前没有返回具体隐患条目。</div>
+                            )}
                           </div>
-                        </div>
+                        </section>
                       ) : null}
-                      <ResultList title="待复核点" items={hazardResult.uncertain_points} />
-                      <ResultList title="优先整改建议" items={hazardResult.recommended_actions} />
+
+                      {hazardSubTab === 'summary' ? (
+                        <section className="hazard-subtab-panel">
+                          <div className={hazardResult.has_hazard ? 'status-banner danger' : 'status-banner safe'}>
+                            <strong>{hazardResult.has_hazard ? '【检测到安全风险】' : '【未检测到明显风险】'}</strong>
+                            <span>{hazardResult.overall_risk_level || '待返回'}</span>
+                          </div>
+                          <ResultBlock title="总结" content={hazardResult.summary || '暂无总结。'} />
+                          <div className="result-block">
+                            <h4>参考安全条例</h4>
+                            {ragExcerpts.length > 0 ? (
+                              <div className="rag-excerpt-list">
+                                {ragExcerpts.map((excerpt) => (
+                                  <div className="rag-excerpt" key={`rag-${excerpt.idx}`} id={`rag-excerpt-${excerpt.idx}`}>
+                                    <span className="rag-excerpt-badge">条例片段 {excerpt.idx}</span>
+                                    <p>{excerpt.text}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>暂无参考条例。</p>
+                            )}
+                          </div>
+                        </section>
+                      ) : null}
+
+                      {hazardSubTab === 'priority' ? (
+                        <section className="hazard-subtab-panel">
+                          <ResultList title="待复核点" items={hazardResult.uncertain_points} />
+                          <ResultList title="优先整改建议" items={hazardResult.recommended_actions} />
+                        </section>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="empty-state vision-result-empty">
@@ -998,24 +1032,6 @@ ${ragContext}
                     </div>
                   )}
                 </div>
-
-                {hazardRaw || hazardResult ? (
-                  <div className="vision-raw-block">
-                    <h4>原始输出</h4>
-                    {hazardResult ? (
-                      // Show formatted JSON after analysis completes
-                      <textarea
-                        value={JSON.stringify(hazardResult, null, 2)}
-                        readOnly
-                        rows={12}
-                        className="json-output"
-                      />
-                    ) : (
-                      // Show streaming output during analysis
-                      <textarea value={hazardRaw} readOnly rows={8} />
-                    )}
-                  </div>
-                ) : null}
               </div>
             </div>
           </section>

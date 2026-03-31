@@ -17,6 +17,7 @@
 .about-button { font-weight: 800; }
 .nav-icon, .button-icon { width: 1rem; height: 1rem; }
 .page-content { width: min(1240px, calc(100% - 2rem)); margin: 0 auto; padding: 1.25rem 0 2rem; }
+.page-content.page-content-hazard { width: min(1520px, calc(100% - 2rem)); }
 .page-view, .panel, .settings-modal, .about-modal, .page-summary-card, .vision-upload-card, .vision-result-card { background: rgba(255,255,255,.94); border: 1px solid #e2e8f0; border-radius: 1.4rem; box-shadow: 0 18px 40px rgba(15,23,42,.06); }
 .page-view { padding: 1rem; }
 .page-intro, .feature-grid, .upload-grid, .media-sections { display: grid; gap: 1rem; }
@@ -38,6 +39,7 @@
 .upload-box, .ghost-button, .secondary-action, .mini-action, .result-tab { padding: .85rem 1rem; border-radius: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; color: #334155; font-weight: 700; text-align: center; }
 .upload-box input, .hidden-input { display: none; }
 .vision-layout { display: grid; grid-template-columns: 1.02fr .98fr; gap: 1rem; }
+.hazard-layout { grid-template-columns: minmax(620px, 1fr) minmax(760px, 1.25fr); }
 .vision-left, .vision-right { min-width: 0; }
 .vision-upload-card, .vision-result-card { padding: 1.4rem; }
 .vision-card-head, .vision-result-head { justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
@@ -101,6 +103,7 @@
 .error-box { margin-top: 1rem; padding: .85rem 1rem; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 .result-panel { min-height: 720px; }
 .result-stack, .hazard-list, .media-sections { display: grid; gap: .85rem; }
+.hazard-subtab-panel { display: grid; gap: .85rem; }
 .status-banner { justify-content: space-between; gap: .75rem; padding: .9rem 1rem; color: #fff; }
 .status-banner.safe { background: linear-gradient(135deg,#059669,#0f766e); }
 .status-banner.danger { background: linear-gradient(135deg,#ea580c,#dc2626); }
