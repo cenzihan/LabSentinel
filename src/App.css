@@ -2,6 +2,7 @@
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; background: rgba(255,255,255,.92); border-bottom: 1px solid #e2e8f0; box-shadow: 0 8px 22px rgba(15,23,42,.04); backdrop-filter: blur(10px); }
 .topbar-left, .topbar-right, .center-nav, .engine-badge, .status-banner, .hazard-head, .vision-card-head, .vision-result-head, .vision-action-row, .result-tab-group { display: flex; align-items: center; }
 .topbar-left { gap: .85rem; cursor: pointer; min-width: 240px; }
+.header-logo-group { display: flex; align-items: center; gap: .45rem; }
 .header-logo-wrap { width: 2.8rem; height: 2.8rem; display: flex; align-items: center; justify-content: center; }
 .header-logo-image { width: 100%; height: 100%; object-fit: contain; }
 .brand-title { margin: 0; font-size: 1.05rem; line-height: 1; color: #0f172a; font-weight: 700; letter-spacing: -.02em; }

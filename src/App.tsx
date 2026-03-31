@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent, ReactNode } from 'react';
 import './App.css';
+import labSentinelLogo from '../logo/labsentinel.png';
 import i3cLogo from '../logo/i3c.png';
 import exampleImage1 from '../example/example1.jpg';
 
@@ -823,8 +824,13 @@ ${ragContext}
       <Toast {...toast} />
       <header className="topbar">
         <div className="topbar-left" onClick={() => window.location.reload()}>
-          <div className="header-logo-wrap">
-            <img src={i3cLogo} alt="LabSentinel Logo" className="header-logo-image" />
+          <div className="header-logo-group">
+            <div className="header-logo-wrap">
+              <img src={labSentinelLogo} alt="LabSentinel Logo" className="header-logo-image" />
+            </div>
+            <div className="header-logo-wrap">
+              <img src={i3cLogo} alt="i3c Logo" className="header-logo-image" />
+            </div>
           </div>
           <h1 className="brand-title">LabSentinel</h1>
           <a href={settings.githubUrl} target="_blank" rel="noreferrer" className="header-inline-icon" title="GitHub Repository" onClick={(event) => event.stopPropagation()}>
