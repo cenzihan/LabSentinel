@@ -68,10 +68,34 @@ const DEFAULT_OMNI_SYSTEM_PROMPT = `你是一名“实验室安全多模态助�
 
 type TabId = 'hazard' | 'omni' | 'realtime';
 
+type ToastType = 'success' | 'warning' | 'error';
+
+type ToastState = {
+  visible: boolean;
+  message: string;
+  type: ToastType;
+};
+
 type ApiSettings = {
   apiKey: string;
   baseUrl: string;
   githubUrl: string;
+  hazardModel: string;
+  omniModel: string;
+};
+
+type ModelPreset = {
+  name: string;
+  label: string;
+};
+
+type ModelPresetsResponse = {
+  visionModels: ModelPreset[];
+  omniModels: ModelPreset[];
+  defaults: {
+    vision: string;
+    omni: string;
+  };
 };
 
 type MediaAsset = {
@@ -104,11 +128,286 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showHazardPromptSettings, setShowHazardPromptSettings] = useState(false);
   const [hazardDragging, setHazardDragging] = useState(false);
+  const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' });
+  const [modelPresets, setModelPresets] = useState<ModelPresetsResponse | null>(null);
+
+  // User custom presets (stored in localStorage, merged with server defaults)
+  const [customVisionModels, setCustomVisionModels] = useState<ModelPreset[]>([]);
+  const [customOmniModels, setCustomOmniModels] = useState<ModelPreset[]>([]);
+
+  // New preset input state
+  const [newVisionModelName, setNewVisionModelName] = useState('');
+  const [newVisionModelLabel, setNewVisionModelLabel] = useState('');
+  const [newOmniModelName, setNewOmniModelName] = useState('');
+  const [newOmniModelLabel, setNewOmniModelLabel] = useState('');
+
   const [settings, setSettings] = useState<ApiSettings>({
     apiKey: DEFAULT_API_KEY,
     baseUrl: DEFAULT_BASE_URL,
     githubUrl: DEFAULT_GITHUB_URL,
+    hazardModel: HAZARD_MODEL,
+    omniModel: OMNI_MODEL,
   });
+
+  const showToast = useCallback((message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  }, []);
+
+  // Fetch model presets from /api/models
+  useEffect(() => {
+    const fetchModelPresets = async () => {
+      try {
+        const response = await fetch('/api/models');
+        if (response.ok) {
+          const data = await response.json() as ModelPresetsResponse;
+          setModelPresets(data);
+        }
+      } catch {
+        // Silently fail - UI will still work with manual input
+      }
+    };
+    fetchModelPresets();
+  }, []);
+
+  // Load custom presets from localStorage
+  useEffect(() => {
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as {
+          visionModels?: ModelPreset[];
+          omniModels?: ModelPreset[];
+        };
+        if (parsed.visionModels) setCustomVisionModels(parsed.visionModels);
+        if (parsed.omniModels) setCustomOmniModels(parsed.omniModels);
+      } catch {
+        // Invalid data, ignore
+      }
+    }
+  }, []);
+
+  // Save custom presets to localStorage
+  useEffect(() => {
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      visionModels: customVisionModels,
+      omniModels: customOmniModels,
+    }));
+  }, [customVisionModels, customOmniModels]);
+
+  // Add custom vision model preset
+  const addVisionModelPreset = useCallback(() => {
+    if (!newVisionModelName.trim() || !newVisionModelLabel.trim()) {
+      showToast('请填写模型名称和显示名称', 'error');
+      return;
+    }
+    // Check if already exists
+    const allVisionModels = [...(modelPresets?.visionModels || []), ...customVisionModels];
+    if (allVisionModels.some(m => m.name === newVisionModelName.trim())) {
+      showToast('该模型已存在', 'error');
+      return;
+    }
+    setCustomVisionModels(prev => [...prev, { name: newVisionModelName.trim(), label: newVisionModelLabel.trim() }]);
+    setNewVisionModelName('');
+    setNewVisionModelLabel('');
+    showToast('已添加自定义模型', 'success');
+  }, [newVisionModelName, newVisionModelLabel, modelPresets, customVisionModels, showToast]);
+
+  // Delete custom vision model preset
+  const deleteVisionModelPreset = useCallback((name: string) => {
+    setCustomVisionModels(prev => prev.filter(m => m.name !== name));
+    showToast('已删除自定义模型', 'success');
+  }, [showToast]);
+
+  // Add custom omni model preset
+  const addOmniModelPreset = useCallback(() => {
+    if (!newOmniModelName.trim() || !newOmniModelLabel.trim()) {
+      showToast('请填写模型名称和显示名称', 'error');
+      return;
+    }
+    const allOmniModels = [...(modelPresets?.omniModels || []), ...customOmniModels];
+    if (allOmniModels.some(m => m.name === newOmniModelName.trim())) {
+      showToast('该模型已存在', 'error');
+      return;
+    }
+    setCustomOmniModels(prev => [...prev, { name: newOmniModelName.trim(), label: newOmniModelLabel.trim() }]);
+    setNewOmniModelName('');
+    setNewOmniModelLabel('');
+    showToast('已添加自定义模型', 'success');
+  }, [newOmniModelName, newOmniModelLabel, modelPresets, customOmniModels, showToast]);
+
+  // Delete custom omni model preset
+  const deleteOmniModelPreset = useCallback((name: string) => {
+    setCustomOmniModels(prev => prev.filter(m => m.name !== name));
+    showToast('已删除自定义模型', 'success');
+  }, [showToast]);
+
+  // Merged presets (server defaults + user customizations)
+  const mergedVisionModels = useMemo(() => {
+    const serverModels = modelPresets?.visionModels || [];
+    // Filter out server models that user has deleted (stored as deleted list)
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let deletedServerModels: string[] = [];
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as { deletedVisionModels?: string[] };
+        deletedServerModels = parsed.deletedVisionModels || [];
+      } catch { }
+    }
+    const filteredServerModels = serverModels.filter(m => !deletedServerModels.includes(m.name));
+    return [...filteredServerModels, ...customVisionModels];
+  }, [modelPresets?.visionModels, customVisionModels]);
+
+  const mergedOmniModels = useMemo(() => {
+    const serverModels = modelPresets?.omniModels || [];
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let deletedServerModels: string[] = [];
+    if (savedPresets) {
+      try {
+        const parsed = JSON.parse(savedPresets) as { deletedOmniModels?: string[] };
+        deletedServerModels = parsed.deletedOmniModels || [];
+      } catch { }
+    }
+    const filteredServerModels = serverModels.filter(m => !deletedServerModels.includes(m.name));
+    return [...filteredServerModels, ...customOmniModels];
+  }, [modelPresets?.omniModels, customOmniModels]);
+
+  // Delete any preset (server or custom) - server ones get marked as deleted, custom ones removed
+  const deleteVisionPreset = useCallback((model: ModelPreset) => {
+    const isServerModel = modelPresets?.visionModels?.some(m => m.name === model.name);
+    if (isServerModel) {
+      // Mark server model as deleted
+      const savedPresets = localStorage.getItem('lab_safety_custom_models');
+      let existing: { deletedVisionModels?: string[] } = {};
+      if (savedPresets) {
+        try {
+          existing = JSON.parse(savedPresets) || {};
+        } catch { }
+      }
+      const deletedList = [...(existing.deletedVisionModels || []), model.name];
+      localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+        ...existing,
+        deletedVisionModels: deletedList,
+      }));
+      // Force re-render by updating state
+      setCustomVisionModels(prev => [...prev]);
+      showToast('已从列表移除', 'success');
+    } else {
+      deleteVisionModelPreset(model.name);
+    }
+  }, [modelPresets?.visionModels, deleteVisionModelPreset, showToast]);
+
+  const deleteOmniPreset = useCallback((model: ModelPreset) => {
+    const isServerModel = modelPresets?.omniModels?.some(m => m.name === model.name);
+    if (isServerModel) {
+      const savedPresets = localStorage.getItem('lab_safety_custom_models');
+      let existing: { deletedOmniModels?: string[] } = {};
+      if (savedPresets) {
+        try {
+          existing = JSON.parse(savedPresets) || {};
+        } catch { }
+      }
+      const deletedList = [...(existing.deletedOmniModels || []), model.name];
+      localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+        ...existing,
+        deletedOmniModels: deletedList,
+      }));
+      setCustomOmniModels(prev => [...prev]);
+      showToast('已从列表移除', 'success');
+    } else {
+      deleteOmniModelPreset(model.name);
+    }
+  }, [modelPresets?.omniModels, deleteOmniModelPreset, showToast]);
+
+  // Reset to server defaults (clear all customizations)
+  const resetVisionPresets = useCallback(() => {
+    setCustomVisionModels([]);
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let existing = {};
+    if (savedPresets) {
+      try {
+        existing = JSON.parse(savedPresets) || {};
+      } catch { }
+    }
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      ...existing,
+      deletedVisionModels: [],
+      visionModels: [],
+    }));
+    showToast('已恢复默认预设', 'success');
+  }, [showToast]);
+
+  const resetOmniPresets = useCallback(() => {
+    setCustomOmniModels([]);
+    const savedPresets = localStorage.getItem('lab_safety_custom_models');
+    let existing = {};
+    if (savedPresets) {
+      try {
+        existing = JSON.parse(savedPresets) || {};
+      } catch { }
+    }
+    localStorage.setItem('lab_safety_custom_models', JSON.stringify({
+      ...existing,
+      deletedOmniModels: [],
+      omniModels: [],
+    }));
+    showToast('已恢复默认预设', 'success');
+  }, [showToast]);
+
+  // Use API defaults for model config if localStorage doesn't have them
+  useEffect(() => {
+    if (!modelPresets) return;
+
+    const saved = localStorage.getItem('lab_safety_settings');
+    if (!saved) {
+      // No localStorage at all - use API defaults
+      setSettings(prev => ({
+        ...prev,
+        hazardModel: modelPresets.defaults.vision,
+        omniModel: modelPresets.defaults.omni,
+      }));
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Partial<ApiSettings>;
+      // If localStorage doesn't have hazardModel or omniModel, use API defaults
+      const needsVisionDefault = !parsed.hazardModel;
+      const needsOmniDefault = !parsed.omniModel;
+      if (needsVisionDefault || needsOmniDefault) {
+        setSettings(prev => ({
+          ...prev,
+          hazardModel: needsVisionDefault ? modelPresets.defaults.vision : prev.hazardModel,
+          omniModel: needsOmniDefault ? modelPresets.defaults.omni : prev.omniModel,
+        }));
+      }
+    } catch {
+      // Invalid localStorage - use API defaults
+      setSettings(prev => ({
+        ...prev,
+        hazardModel: modelPresets.defaults.vision,
+        omniModel: modelPresets.defaults.omni,
+      }));
+    }
+  }, [modelPresets]);
+
+  useEffect(() => {
+    if (!toast.visible) return;
+    const timer = window.setTimeout(() => {
+      setToast((prev) => ({ ...prev, visible: false }));
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [toast.visible]);
+
+  // Test trigger for Toast: Alt+T shows a test toast
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === 't') {
+        showToast('Toast 组件测试成功', 'success');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showToast]);
 
   const [hazardPrompt, setHazardPrompt] = useState(DEFAULT_HAZARD_PROMPT);
   const [hazardImage, setHazardImage] = useState<MediaAsset | null>(null);
@@ -118,6 +417,9 @@ function App() {
   const [hazardRaw, setHazardRaw] = useState('');
   const [hazardResult, setHazardResult] = useState<HazardResult | null>(null);
   const [ragExcerpts, setRagExcerpts] = useState<Array<{ idx: number; text: string }>>([]);
+
+  // AbortController for hazard analysis
+  const hazardAbortControllerRef = useRef<AbortController | null>(null);
 
   const [omniSystemPrompt, setOmniSystemPrompt] = useState(DEFAULT_OMNI_SYSTEM_PROMPT);
   const [omniUserPrompt, setOmniUserPrompt] = useState('请结合我上传的内容，分析是否存在实验室安全隐患，并给出整改建议。');
@@ -147,12 +449,16 @@ function App() {
         apiKey: parsed.apiKey || DEFAULT_API_KEY,
         baseUrl: parsed.baseUrl || DEFAULT_BASE_URL,
         githubUrl: parsed.githubUrl || DEFAULT_GITHUB_URL,
+        hazardModel: parsed.hazardModel || HAZARD_MODEL,
+        omniModel: parsed.omniModel || OMNI_MODEL,
       });
     } catch {
       setSettings({
         apiKey: DEFAULT_API_KEY,
         baseUrl: DEFAULT_BASE_URL,
         githubUrl: DEFAULT_GITHUB_URL,
+        hazardModel: HAZARD_MODEL,
+        omniModel: OMNI_MODEL,
       });
     }
   }, []);
@@ -203,12 +509,30 @@ function App() {
     await handleSingleFile(file, setHazardImage);
   }
 
+  // Stop hazard analysis and abort ongoing requests
+  function stopHazardAnalysis() {
+    if (hazardAbortControllerRef.current) {
+      hazardAbortControllerRef.current.abort();
+      hazardAbortControllerRef.current = null;
+    }
+    setHazardLoading(false);
+    setHazardStep('');
+    setHazardError('分析已中断');
+    setHazardRaw('');
+    setHazardResult(null);
+    setRagExcerpts([]);
+  }
+
   async function handleHazardSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hazardImage) {
       setHazardError('请先上传、拖入或拍摄一张实验室图片。');
       return;
     }
+
+    // Create new AbortController for this analysis
+    hazardAbortControllerRef.current = new AbortController();
+    const abortSignal = hazardAbortControllerRef.current.signal;
 
     setHazardLoading(true);
     setHazardStep('步骤 1/3：AI 识别隐患...');
@@ -221,7 +545,7 @@ function App() {
       // Step 1: VLM identifies hazards with bbox
       const step1Text = await callProxyWithFallback({
         settings,
-        model: HAZARD_MODEL,
+        model: settings.hazardModel,
         messages: [
           { role: 'system', content: '你必须只输出合法 JSON。' },
           {
@@ -233,7 +557,11 @@ function App() {
           },
         ],
         onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
+        abortSignal,
       });
+
+      // Check if aborted after step 1
+      if (abortSignal.aborted) return;
 
       const step1Raw = parseJsonFromText(step1Text) as HazardResult;
 
@@ -258,22 +586,29 @@ function App() {
       const keywords = extractHazardKeywords(step1Result);
       let excerpts: string[] = [];
 
-      if (keywords.length > 0) {
+      if (keywords.length > 0 && !abortSignal.aborted) {
         try {
           const ragResponse = await fetch('/api/rag-search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ keywords, topK: 5 }),
+            signal: abortSignal,
           });
           if (ragResponse.ok) {
             const ragData = await ragResponse.json();
             excerpts = (ragData.results || []).map((r: { text: string }) => r.text);
             setRagExcerpts(excerpts.map((text: string, i: number) => ({ idx: i + 1, text })));
           }
-        } catch {
+        } catch (ragError) {
           // RAG search failure is non-fatal; continue without regulation context
+          if (ragError instanceof Error && ragError.name === 'AbortError') {
+            return; // Abort during RAG search
+          }
         }
       }
+
+      // Check if aborted before step 3
+      if (abortSignal.aborted) return;
 
       // Step 3: If we have regulation excerpts, do a second VLM call with context
       if (excerpts.length > 0) {
@@ -296,7 +631,7 @@ ${ragContext}
 
         const finalText = await callProxyWithFallback({
           settings,
-          model: HAZARD_MODEL,
+          model: settings.hazardModel,
           messages: [
             { role: 'system', content: '你必须只输出合法 JSON。' },
             {
@@ -308,7 +643,11 @@ ${ragContext}
             },
           ],
           onChunk: (chunk) => setHazardRaw((prev) => prev + chunk),
+          abortSignal,
         });
+
+        // Check if aborted after step 3
+        if (abortSignal.aborted) return;
 
         const finalRaw = parseJsonFromText(finalText) as HazardResult;
 
@@ -361,10 +700,18 @@ ${ragContext}
         setHazardResult(step1Result);
       }
     } catch (error) {
+      // Handle AbortError specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        setHazardError('分析已中断');
+        setHazardRaw('');
+        setHazardResult(null);
+        return;
+      }
       setHazardError(getErrorMessage(error));
     } finally {
       setHazardLoading(false);
       setHazardStep('');
+      hazardAbortControllerRef.current = null;
     }
   }
 
@@ -388,7 +735,7 @@ ${ragContext}
     try {
       await callProxyWithFallback({
         settings,
-        model: OMNI_MODEL,
+        model: settings.omniModel,
         messages: [
           { role: 'system', content: omniSystemPrompt.trim() || DEFAULT_OMNI_SYSTEM_PROMPT },
           { role: 'user', content: contentParts },
@@ -468,6 +815,7 @@ ${ragContext}
 
   return (
     <div className="app-shell">
+      <Toast {...toast} />
       <header className="topbar">
         <div className="topbar-left" onClick={() => window.location.reload()}>
           <div className="header-logo-wrap">
@@ -497,7 +845,7 @@ ${ragContext}
         <div className="topbar-right">
           <div className="engine-badge">
             <span className="engine-dot"></span>
-            <span>{activeTab === 'omni' ? OMNI_MODEL : HAZARD_MODEL}</span>
+            <span>{activeTab === 'omni' ? settings.omniModel : settings.hazardModel}</span>
           </div>
           <button className="icon-button" type="button" title="API 配置" onClick={() => setShowSettings(true)}>
             <ConfigIcon />
@@ -518,7 +866,7 @@ ${ragContext}
                     <p className="page-kicker">AI Vision</p>
                     <h2>图片安全隐患检测</h2>
                   </div>
-                  <span className="model-chip">{HAZARD_MODEL}</span>
+                  <span className="model-chip">{settings.hazardModel}</span>
                 </div>
 
                 <div
@@ -564,10 +912,18 @@ ${ragContext}
                     <ConfigIcon />
                     Prompt 配置
                   </button>
-                  <button className="primary-action" type="submit" onClick={(event) => void handleHazardSubmit(event as unknown as FormEvent<HTMLFormElement>)} disabled={hazardLoading || !hazardImage}>
-                    {hazardLoading ? (hazardStep || '分析中...') : '开始检测'}
-                  </button>
+                  {hazardLoading ? (
+                    <button className="warn-button" type="button" onClick={stopHazardAnalysis}>
+                      停止分析
+                    </button>
+                  ) : (
+                    <button className="primary-action" type="submit" onClick={(event) => void handleHazardSubmit(event as unknown as FormEvent<HTMLFormElement>)} disabled={!hazardImage}>
+                      开始检测
+                    </button>
+                  )}
                 </div>
+
+                {hazardLoading && hazardStep ? <div className="status-indicator"><span className="engine-dot"></span>{hazardStep}</div> : null}
 
                 {hazardError ? <div className="error-box">{hazardError}</div> : null}
               </div>
@@ -643,10 +999,21 @@ ${ragContext}
                   )}
                 </div>
 
-                {hazardRaw ? (
+                {hazardRaw || hazardResult ? (
                   <div className="vision-raw-block">
                     <h4>原始输出</h4>
-                    <textarea value={hazardRaw} readOnly rows={8} />
+                    {hazardResult ? (
+                      // Show formatted JSON after analysis completes
+                      <textarea
+                        value={JSON.stringify(hazardResult, null, 2)}
+                        readOnly
+                        rows={12}
+                        className="json-output"
+                      />
+                    ) : (
+                      // Show streaming output during analysis
+                      <textarea value={hazardRaw} readOnly rows={8} />
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -675,7 +1042,7 @@ ${ragContext}
                     <p className="panel-kicker">输入区域</p>
                     <h3>多模态配置</h3>
                   </div>
-                  <span className="model-chip">{OMNI_MODEL}</span>
+                  <span className="model-chip">{settings.omniModel}</span>
                 </div>
 
                 <label className="field">
@@ -770,6 +1137,176 @@ ${ragContext}
               <span>GitHub 链接</span>
               <input type="text" value={settings.githubUrl} onChange={(event) => setSettings((prev) => ({ ...prev, githubUrl: event.target.value }))} placeholder={DEFAULT_GITHUB_URL} />
             </label>
+
+            <div className="settings-section-divider">
+              <h4>模型配置</h4>
+            </div>
+
+            <label className="field">
+              <span>图片/实时检测模型</span>
+              <div className="model-input-group">
+                {mergedVisionModels.length ? (
+                  <select
+                    className="model-select"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSettings((prev) => ({ ...prev, hazardModel: event.target.value }));
+                        showToast('模型配置已更新', 'success');
+                      }
+                    }}
+                  >
+                    <option value="">选择预设模型...</option>
+                    {mergedVisionModels.map((model) => (
+                      <option key={model.name} value={model.name}>{model.label}</option>
+                    ))}
+                  </select>
+                ) : null}
+                <input
+                  type="text"
+                  value={settings.hazardModel}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, hazardModel: event.target.value }))}
+                  onBlur={() => showToast('模型配置已更新', 'success')}
+                  placeholder={HAZARD_MODEL}
+                />
+                <button
+                  type="button"
+                  className="reset-model-btn"
+                  onClick={() => {
+                    if (modelPresets?.defaults?.vision) {
+                      setSettings((prev) => ({ ...prev, hazardModel: modelPresets.defaults.vision }));
+                      showToast('已恢复默认模型', 'success');
+                    }
+                  }}
+                  disabled={!modelPresets?.defaults?.vision}
+                >
+                  重置
+                </button>
+              </div>
+            </label>
+
+            {/* Vision model preset management */}
+            <div className="preset-management">
+              <div className="preset-list">
+                {mergedVisionModels.map((model) => (
+                  <div key={model.name} className="preset-item">
+                    <span className="preset-label">{model.label}</span>
+                    <span className="preset-name">{model.name}</span>
+                    <button
+                      type="button"
+                      className="preset-delete-btn"
+                      onClick={() => deleteVisionPreset(model)}
+                      title="从列表移除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="preset-add-form">
+                <input
+                  type="text"
+                  placeholder="模型名称 (如 Qwen/Qwen3-VL-8B)"
+                  value={newVisionModelName}
+                  onChange={(e) => setNewVisionModelName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="显示名称 (如 Qwen3-VL-8B)"
+                  value={newVisionModelLabel}
+                  onChange={(e) => setNewVisionModelLabel(e.target.value)}
+                />
+                <button type="button" className="preset-add-btn" onClick={addVisionModelPreset}>
+                  添加
+                </button>
+              </div>
+              <button type="button" className="preset-reset-btn" onClick={resetVisionPresets}>
+                恢复默认预设
+              </button>
+            </div>
+
+            <label className="field">
+              <span>多模态咨询模型</span>
+              <div className="model-input-group">
+                {mergedOmniModels.length ? (
+                  <select
+                    className="model-select"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSettings((prev) => ({ ...prev, omniModel: event.target.value }));
+                        showToast('模型配置已更新', 'success');
+                      }
+                    }}
+                  >
+                    <option value="">选择预设模型...</option>
+                    {mergedOmniModels.map((model) => (
+                      <option key={model.name} value={model.name}>{model.label}</option>
+                    ))}
+                  </select>
+                ) : null}
+                <input
+                  type="text"
+                  value={settings.omniModel}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, omniModel: event.target.value }))}
+                  onBlur={() => showToast('模型配置已更新', 'success')}
+                  placeholder={OMNI_MODEL}
+                />
+                <button
+                  type="button"
+                  className="reset-model-btn"
+                  onClick={() => {
+                    if (modelPresets?.defaults?.omni) {
+                      setSettings((prev) => ({ ...prev, omniModel: modelPresets.defaults.omni }));
+                      showToast('已恢复默认模型', 'success');
+                    }
+                  }}
+                  disabled={!modelPresets?.defaults?.omni}
+                >
+                  重置
+                </button>
+              </div>
+            </label>
+
+            {/* Omni model preset management */}
+            <div className="preset-management">
+              <div className="preset-list">
+                {mergedOmniModels.map((model) => (
+                  <div key={model.name} className="preset-item">
+                    <span className="preset-label">{model.label}</span>
+                    <span className="preset-name">{model.name}</span>
+                    <button
+                      type="button"
+                      className="preset-delete-btn"
+                      onClick={() => deleteOmniPreset(model)}
+                      title="从列表移除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="preset-add-form">
+                <input
+                  type="text"
+                  placeholder="模型名称 (如 Qwen/Qwen3-Omni-7B)"
+                  value={newOmniModelName}
+                  onChange={(e) => setNewOmniModelName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="显示名称 (如 Qwen3-Omni-7B)"
+                  value={newOmniModelLabel}
+                  onChange={(e) => setNewOmniModelLabel(e.target.value)}
+                />
+                <button type="button" className="preset-add-btn" onClick={addOmniModelPreset}>
+                  添加
+                </button>
+              </div>
+              <button type="button" className="preset-reset-btn" onClick={resetOmniPresets}>
+                恢复默认预设
+              </button>
+            </div>
           </section>
         </div>
       ) : null}
@@ -1001,6 +1538,30 @@ function CloseIcon() {
   return <svg className="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
 }
 
+function Toast({ visible, message, type }: ToastState) {
+  if (!visible) return null;
+  return (
+    <div className={`toast toast-${type}`}>
+      <span className="toast-icon">
+        {type === 'success' ? <SuccessIcon /> : type === 'warning' ? <WarningIcon /> : <ErrorIcon />}
+      </span>
+      <span className="toast-message">{message}</span>
+    </div>
+  );
+}
+
+function SuccessIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M20 6 9 17l-5-5" /></svg>;
+}
+
+function WarningIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>;
+}
+
+function ErrorIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6" /><path d="M9 9l6 6" /></svg>;
+}
+
 function pickSupportedMimeType(types: string[]) {
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
@@ -1047,11 +1608,12 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '请求失败，请检查网络、API Key 或模型配置。';
 }
 
-async function callProxyStream({ settings, model, messages, onChunk }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; }) {
+async function callProxyStream({ settings, model, messages, onChunk, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; abortSignal?: AbortSignal; }) {
   const response = await fetch('/api/chat-stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model, messages }),
+    signal: abortSignal,
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -1084,10 +1646,14 @@ async function callProxyStream({ settings, model, messages, onChunk }: { setting
   return finalText;
 }
 
-async function callProxyWithFallback({ settings, model, messages, onChunk }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; }) {
+async function callProxyWithFallback({ settings, model, messages, onChunk, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; onChunk: (chunk: string) => void; abortSignal?: AbortSignal; }) {
   try {
-    return await callProxyStream({ settings, model, messages, onChunk });
+    return await callProxyStream({ settings, model, messages, onChunk, abortSignal });
   } catch (error) {
+    // Don't fallback on abort errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     const message = getErrorMessage(error);
     const shouldFallback =
       message.includes('代理请求失败') ||
@@ -1098,7 +1664,7 @@ async function callProxyWithFallback({ settings, model, messages, onChunk }: { s
       throw error;
     }
 
-    const fallback = await callProxySafe({ settings, model, messages });
+    const fallback = await callProxySafe({ settings, model, messages, abortSignal });
     if (fallback.content) {
       onChunk(fallback.content);
     }
@@ -1106,11 +1672,12 @@ async function callProxyWithFallback({ settings, model, messages, onChunk }: { s
   }
 }
 
-async function callProxySafe({ settings, model, messages }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>> }) {
+async function callProxySafe({ settings, model, messages, abortSignal }: { settings: ApiSettings; model: string; messages: Array<Record<string, unknown>>; abortSignal?: AbortSignal; }) {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model, messages }),
+    signal: abortSignal,
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -1124,33 +1691,106 @@ async function callProxySafe({ settings, model, messages }: { settings: ApiSetti
   };
 }
 
+// Project introduction text for streaming display while waiting for API
+const PROJECT_INTRO = `LabSentinel 是一款面向高校实验室的智能安全巡检系统。
+
+本系统利用多模态大语言模型，实时识别化学、材料、生物、电子等实验场景中的安全隐患。
+
+核心功能包括：
+• 实时视频流检测 - AI 定期截取画面并分析
+• 图片隐患识别 - 上传照片获取结构化检测报告
+• 多模态咨询 - 支持文本、图片、视频、音频组合输入
+• RAG 增强检索 - 结合实验室安全规范进行智能建议
+
+检测维度覆盖：个人防护、化学品安全、设备操作、气体压力容器、环境管理、生物样品管理等。
+
+技术架构：前端 React + TypeScript，后端 Express 代理，对接 SiliconFlow 视觉语言模型 API。
+
+本系统由 i3c 实验室开发，旨在提升实验室安全管理效率，降低安全事故风险。
+
+正在等待 AI 分析结果...`;
+
 function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<HazardResult | null>(null);
   const [error, setError] = useState('');
-  
+  const [introText, setIntroText] = useState('');
+  const [showIntro, setShowIntro] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<number | null>(null);
+  const introIntervalRef = useRef<number | null>(null);
   const isDetectingRef = useRef(false);
+  const introIndexRef = useRef(0);
 
   useEffect(() => {
     isDetectingRef.current = isDetecting;
   }, [isDetecting]);
 
+  // Stream intro text character by character
+  const startIntroStreaming = useCallback(() => {
+    setIntroText('');
+    setShowIntro(true);
+    introIndexRef.current = 0;
+
+    // Clear any existing intro interval
+    if (introIntervalRef.current !== null) {
+      window.clearInterval(introIntervalRef.current);
+    }
+
+    introIntervalRef.current = window.setInterval(() => {
+      if (!isDetectingRef.current) {
+        // Stop streaming if detection stopped
+        if (introIntervalRef.current !== null) {
+          window.clearInterval(introIntervalRef.current);
+          introIntervalRef.current = null;
+        }
+        return;
+      }
+
+      const nextIndex = introIndexRef.current + 1;
+      if (nextIndex <= PROJECT_INTRO.length) {
+        setIntroText(PROJECT_INTRO.slice(0, nextIndex));
+        introIndexRef.current = nextIndex;
+      } else {
+        // Finished streaming, keep showing full intro until result comes
+        if (introIntervalRef.current !== null) {
+          window.clearInterval(introIntervalRef.current);
+          introIntervalRef.current = null;
+        }
+      }
+    }, 30); // 30ms per character for smooth streaming
+  }, []);
+
+  // Stop intro streaming and clear results
   const stopDetection = useCallback(() => {
     setIsDetecting(false);
-    
+
+    // Clear detection interval
     if (intervalRef.current !== null) {
       window.clearTimeout(intervalRef.current);
       intervalRef.current = null;
     }
+
+    // Clear intro streaming interval
+    if (introIntervalRef.current !== null) {
+      window.clearInterval(introIntervalRef.current);
+      introIntervalRef.current = null;
+    }
+
+    // Clear camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+
+    // Clear all results and intro
+    setResult(null);
+    setIntroText('');
+    setShowIntro(false);
   }, []);
 
   useEffect(() => {
@@ -1188,9 +1828,12 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
       setError('');
       setResult(null);
 
+      // Start streaming intro text while waiting for API
+      startIntroStreaming();
+
       const loop = async () => {
          if (!isDetectingRef.current) return;
-         
+
          setIsAnalyzing(true);
          const video = videoRef.current;
          const canvas = canvasRef.current;
@@ -1204,7 +1847,7 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                try {
                   const step1Text = await callProxyWithFallback({
                     settings,
-                    model: HAZARD_MODEL,
+                    model: settings.hazardModel,
                     messages: [
                       { role: 'system', content: '你必须只输出合法 JSON。' },
                       {
@@ -1215,11 +1858,18 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                         ],
                       },
                     ],
-                    onChunk: () => {}, 
+                    onChunk: () => {},
                   });
-                  const parsed = parseJsonFromText(step1Text) as HazardResult;
-                  setResult(parsed);
-                  setError('');
+
+                  // Only update if still detecting
+                  if (isDetectingRef.current) {
+                    const parsed = parseJsonFromText(step1Text) as HazardResult;
+                    setResult(parsed);
+                    // Hide intro once we have real results
+                    setShowIntro(false);
+                    setIntroText('');
+                    setError('');
+                  }
                } catch (err) {
                   // silent fail for loop, just wait for next tick
                   console.warn('Live detection check failed', err);
@@ -1250,7 +1900,7 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
               <p className="page-kicker">Realtime</p>
               <h2>实时安全检测</h2>
             </div>
-            <span className="model-chip">{HAZARD_MODEL}</span>
+            <span className="model-chip">{settings.hazardModel}</span>
           </div>
 
           <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000', aspectRatio: '4/3' }}>
@@ -1316,6 +1966,18 @@ function RealtimeDetectionTab({ settings }: { settings: ApiSettings }) {
                   ) : (
                     <div className="empty-state small">未发现具体隐患。</div>
                   )}
+                </div>
+              </div>
+            ) : showIntro && introText ? (
+              // Show streaming intro while waiting for API response
+              <div className="intro-streaming-container">
+                <div className="intro-streaming-text">
+                  {introText.split('\n').map((line, idx) => (
+                    <p key={idx}>{line}</p>
+                  ))}
+                </div>
+                <div className="intro-streaming-cursor">
+                  <span className="typing-cursor">|</span>
                 </div>
               </div>
             ) : (

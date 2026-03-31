@@ -62,9 +62,23 @@
 .result-tab.active { background: #eff6ff; color: #2563eb; }
 .vision-result-body { flex: 1; overflow: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1rem; }
 .vision-result-empty { min-height: 420px; display: flex; flex-direction: column; gap: .8rem; justify-content: center; }
+
+/* Streaming intro text while waiting for API */
+.intro-streaming-container { min-height: 420px; padding: 1.5rem; display: flex; flex-direction: column; }
+.intro-streaming-text { flex: 1; line-height: 1.8; color: #334155; }
+.intro-streaming-text p { margin: 0 0 .8rem; }
+.intro-streaming-text p:first-child { font-weight: 700; color: #1e40af; font-size: 1.1rem; }
+.intro-streaming-cursor { margin-top: 1rem; }
+.typing-cursor { animation: blink 1s infinite; color: #2563eb; font-weight: 700; }
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .vision-raw-block { margin-top: 1rem; }
 .vision-raw-block h4 { margin: 0 0 .5rem; }
 .vision-raw-block textarea { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; resize: vertical; font: inherit; }
+.vision-raw-block textarea.json-output { font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace; font-size: .85rem; line-height: 1.5; background: #f8fafc; }
+
+/* Status indicator for analysis progress */
+.status-indicator { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; margin-top: .5rem; background: #eff6ff; border-radius: .5rem; color: #1e40af; font-size: .9rem; }
+.status-indicator .engine-dot { width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; animation: pulse 1.5s infinite; box-shadow: 0 0 8px #3b82f6; }
 .preview-card, .empty-state, .media-preview-wrap, .response-box, .result-block, .hazard-item, .note-box, .error-box, .status-banner, .media-card { border-radius: 1rem; }
 .preview-card, .media-preview-wrap, .response-box, .result-block, .hazard-item, .note-box, .media-card { border: 1px solid #e2e8f0; background: #f8fafc; }
 .preview-card, .media-preview-wrap, .response-box, .result-block, .hazard-item, .media-card { padding: 1rem; }
@@ -116,3 +130,39 @@
 .rag-link { color: #2563eb; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .rag-link:hover { color: #1d4ed8; }
 @media (max-width: 720px) { .page-content { width: min(100% - 1rem, 100%); padding-top: 1rem; } .upload-grid, .about-modal { grid-template-columns: 1fr; } .center-nav, .status-banner, .vision-action-row, .vision-upload-actions { flex-direction: column; align-items: stretch; } .about-sidebar { border-right: 0; border-bottom: 1px solid #e2e8f0; } .engine-badge { display: none; } .header-inline-icon { display: none; } }
+
+/* Toast Component Styles */
+.toast { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: .75rem; padding: .85rem 1.25rem; border-radius: 1rem; box-shadow: 0 12px 32px rgba(15,23,42,.12); font-weight: 700; animation: toast-fade-in .3s ease; }
+.toast-success { background: linear-gradient(135deg,#059669,#0f766e); color: #fff; }
+.toast-warning { background: linear-gradient(135deg,#f59e0b,#d97706); color: #fff; }
+.toast-error { background: linear-gradient(135deg,#dc2626,#b91c1c); color: #fff; }
+.toast-icon { display: flex; align-items: center; justify-content: center; }
+.toast-message { font-size: .95rem; }
+@keyframes toast-fade-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* Model Selection Styles */
+.settings-section-divider { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+.settings-section-divider h4 { margin: 0; color: #334155; font-weight: 800; font-size: 1rem; }
+.model-input-group { display: flex; flex-direction: column; gap: .5rem; }
+.model-select { width: 100%; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; font-weight: 700; font: inherit; cursor: pointer; outline: none; }
+.model-select:focus { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+.model-input-group input { width: 100%; }
+.reset-model-btn { margin-top: .25rem; padding: .6rem 1rem; border-radius: .75rem; border: 0; background: #f1f5f9; color: #64748b; font-weight: 700; font-size: .88rem; cursor: pointer; transition: .2s ease; }
+.reset-model-btn:hover:not(:disabled) { background: #e2e8f0; color: #334155; }
+.reset-model-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Preset model management UI */
+.preset-management { margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 1rem; border: 1px solid #e2e8f0; }
+.preset-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.preset-item { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; background: #fff; border-radius: .5rem; border: 1px solid #cbd5e1; }
+.preset-label { font-weight: 700; color: #1e40af; flex-shrink: 0; min-width: 120px; }
+.preset-name { color: #64748b; font-size: .85rem; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; }
+.preset-delete-btn { width: 24px; height: 24px; border: 0; background: #fee2e2; color: #dc2626; border-radius: .25rem; cursor: pointer; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: .2s ease; }
+.preset-delete-btn:hover { background: #fecaca; }
+.preset-add-form { display: flex; gap: .5rem; margin-bottom: .75rem; }
+.preset-add-form input { flex: 1; padding: .6rem .75rem; border-radius: .5rem; border: 1px solid #cbd5e1; font-size: .9rem; }
+.preset-add-form input:focus { border-color: #2563eb; outline: none; }
+.preset-add-btn { padding: .6rem 1rem; border-radius: .5rem; border: 0; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; transition: .2s ease; }
+.preset-add-btn:hover { background: #1d4ed8; }
+.preset-reset-btn { padding: .5rem .75rem; border-radius: .5rem; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: .85rem; cursor: pointer; transition: .2s ease; }
+.preset-reset-btn:hover { background: #f1f5f9; color: #334155; }
