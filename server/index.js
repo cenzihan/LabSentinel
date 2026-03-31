@@ -55,6 +55,7 @@ const DEFAULT_VISION_MODELS = [
 const DEFAULT_OMNI_MODELS = [
   { name: 'Qwen/Qwen2.5-Omni-7B', label: 'Qwen2.5-Omni-7B' },
   { name: 'Qwen/Qwen3-Omni-30B-A3B-Instruct', label: 'Qwen3-Omni-30B (推荐)' },
+  { name: 'Qwen/Qwen3.5-397B-A17B', label: 'Qwen3.5-397B-A17B' },
 ];
 
 app.get('/api/models', (_request, response) => {
